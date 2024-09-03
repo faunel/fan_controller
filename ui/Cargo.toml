@@ -1,0 +1,30 @@
+#cargo-features = ["per-package-target"]
+
+[package]
+edition = "2018"
+readme = "README.md"
+name = "ui"
+version = "0.1.0"
+# default-target = "thumbv7m-none-eabi"
+
+[lib]
+name = "ui"
+
+[dependencies]
+measurements = { path = "../measurements"}
+eeprom = { path = "../eeprom"}
+
+embedded-graphics.workspace = true
+heapless.workspace = true
+u8g2-fonts.workspace = true
+
+# rtic-monotonics = { workspace = true, optional = true }
+ufmt.workspace = true
+fugit.workspace = true
+mipidsi.workspace = true
+display-interface-spi.workspace = true
+eg-seven-segment.workspace = true
+embedded-hal-bus.workspace = true
+stm32f4xx-hal.workspace = true
+defmt.workspace = true
+enum_dispatch.workspace = true

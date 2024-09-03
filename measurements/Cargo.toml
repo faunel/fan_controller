@@ -1,0 +1,15 @@
+
+[package]
+name = "measurements"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "measurements"
+test = false
+bench = false
+
+[dependencies]
+cortex-m.workspace = true
+button-driver.workspace = true
+heapless.workspace = true

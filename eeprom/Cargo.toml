@@ -1,0 +1,15 @@
+[package]
+name = "eeprom"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "eeprom"
+test = false
+bench = false
+
+[dependencies]
+stm32f4xx-hal.workspace = true
+eeprom24x.workspace = true
+heapless.workspace = true
+embedded-hal.workspace = true

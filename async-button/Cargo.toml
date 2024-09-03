@@ -1,0 +1,14 @@
+[package]
+name = "async-button"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "async_button"
+test = false
+bench = false
+
+[dependencies]
+monotonic = {path = "../monotonic"}
+embedded-hal-async.workspace = true
+embedded-hal.workspace = true

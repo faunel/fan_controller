@@ -1,0 +1,48 @@
+
+[workspace]
+members = ["app", "ui", "eeprom", "measurements", "async-button", "monotonic"]
+default-members = ["app"]
+resolver = "2"
+
+[workspace.dependencies]
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.3"
+stm32f4 = {version = "0.15.1", features = ["rt"]}
+panic-probe = { version = "0.3.2", features = ["defmt", "print-defmt"] }
+rtic = {version = "2.1.1", features = [
+    "cortex-m",
+    "rtic-monotonics",
+    "thumbv7-backend",
+]}
+embedded-hal-async = "1.0.0"
+defmt = "0.3.8"
+defmt-rtt = "0.4.1"
+rtt-target = "0.5.0"
+embedded-graphics = {version = "0.8.1"}
+mipidsi = "0.8.0"
+button-driver = {version = "0.2.1", features = ["embedded_hal"]}
+embedded-hal = "1.0.0"
+embedded-hal-bus = "0.2.0"
+display-interface-spi = "0.5.0"
+rtic-monotonics = {version = "2.0.2", features = ["cortex-m-systick", "stm32f411cc"]}
+fugit = "0.3.7"
+stm32f4xx-hal = {version = "0.21.0", features = ["stm32f411", "defmt", "tim11", "gpio-f411"]}
+panic-semihosting = {version = "0.6.0", features = ["exit"]}
+heapless = { version = "0.8.0", features = ["ufmt"]}
+ufmt = "0.2.0"
+profont = "0.7.0"
+eg-seven-segment = "0.2.0"
+u8g2-fonts = "0.4.0"
+eeprom24x = "0.7.2"
+embassy-futures = "0.1.1"
+enum_dispatch = "0.3.13"
+
+
+[profile.release]
+codegen-units = 1   # better optimizations
+debug = true        # symbols are nice and they don't increase the size on Flash
+lto = true          # better optimizations
+opt-level = "z"
+debug-assertions = false
+strip = "debuginfo"
+ 

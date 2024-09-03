@@ -1,0 +1,17 @@
+
+[package]
+name = "monotonic"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "monotonic"
+test = false
+bench = false
+
+[dependencies]
+cortex-m.workspace = true
+button-driver.workspace = true
+heapless.workspace = true
+rtic-monotonics = {workspace = true, features = ["cortex-m-systick"]}
+stm32f4xx-hal.workspace = true

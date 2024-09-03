@@ -1,0 +1,43 @@
+[package]
+name = "fan_controller"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fan_controller"
+test = false
+bench = false
+
+[dependencies]
+ui = {path = "../ui"}
+eeprom = {path = "../eeprom"}
+measurements = {path = "../measurements"}
+async-button = {path = "../async-button"}
+monotonic = {path = "../monotonic"}
+cortex-m-rt.workspace = true
+cortex-m.workspace = true
+embedded-hal.workspace = true
+stm32f4 = {workspace = true, features = ["rt"]}
+stm32f4xx-hal = {workspace = true, features = ["stm32f411", "defmt"]}
+embedded-graphics.workspace = true
+heapless.workspace = true
+u8g2-fonts.workspace = true
+rtic-monotonics = {workspace = true, features = ["cortex-m-systick"]}
+mipidsi.workspace = true
+ufmt.workspace = true
+fugit.workspace = true
+button-driver.workspace = true
+rtic = { version = "2.1.1", features = [
+    "cortex-m",
+    "rtic-monotonics",
+    "thumbv7-backend",
+] }
+embedded-hal-bus.workspace = true
+display-interface-spi.workspace = true
+defmt.workspace = true
+defmt-rtt.workspace = true
+panic-probe = {workspace = true, features = ["defmt", "print-defmt"]}
+eeprom24x.workspace = true
+rtt-target.workspace = true
+embedded-hal-async.workspace = true
+embassy-futures.workspace = true
