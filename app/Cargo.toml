@@ -18,7 +18,7 @@ cortex-m-rt.workspace = true
 cortex-m.workspace = true
 embedded-hal.workspace = true
 stm32f4 = {workspace = true, features = ["rt"]}
-stm32f4xx-hal = {workspace = true, features = ["stm32f411", "defmt"]}
+stm32f4xx-hal = {workspace = true, features = ["stm32f401", "defmt"]}
 embedded-graphics.workspace = true
 heapless.workspace = true
 u8g2-fonts.workspace = true
@@ -41,3 +41,4 @@ eeprom24x.workspace = true
 rtt-target.workspace = true
 embedded-hal-async.workspace = true
 embassy-futures.workspace = true
+display-interface.workspace = true

@@ -1,3 +1,4 @@
 #![no_std]
 
-pub mod measurements;
+pub mod data;
+pub mod measure;

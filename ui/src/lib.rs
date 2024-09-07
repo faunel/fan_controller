@@ -2,7 +2,7 @@
 
 mod config;
 pub mod menu;
-mod screens;
+pub mod screens;
 
 pub use config::{Display, BACKGROUND_COLOR};
 pub use screens::main;

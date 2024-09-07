@@ -377,6 +377,7 @@ dependencies = [
  "cortex-m-rt",
  "defmt",
  "defmt-rtt",
+ "display-interface",
  "display-interface-spi",
  "eeprom",
  "eeprom24x",
@@ -497,6 +498,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libm"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+
+[[package]]
 name = "litrs"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -506,9 +513,8 @@ checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
 name = "measurements"
 version = "0.1.0"
 dependencies = [
- "button-driver",
- "cortex-m",
  "heapless",
+ "ntc",
 ]
 
 [[package]]
@@ -557,6 +563,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 dependencies = [
  "defmt",
+]
+
+[[package]]
+name = "ntc"
+version = "0.1.0"
+dependencies = [
+ "eeprom24x",
+ "embedded-hal 1.0.0",
+ "heapless",
+ "libm",
+ "stm32f4xx-hal",
 ]
 
 [[package]]
@@ -948,6 +965,7 @@ name = "ui"
 version = "0.1.0"
 dependencies = [
  "defmt",
+ "display-interface",
  "display-interface-spi",
  "eeprom",
  "eg-seven-segment",

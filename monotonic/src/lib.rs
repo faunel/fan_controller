@@ -1,8 +1,12 @@
 #![no_std]
-pub mod prelude {
-    use fugit::Duration;
-    pub use rtic_monotonics::systick::prelude::*;
-    pub type MyDuration = Duration<u32, 1, 10_000>;
 
-    systick_monotonic!(Mono, 10000);
+const FREQ_MONO: u32 = 100_000;
+
+pub mod prelude {
+    pub use rtic_monotonics::systick::prelude::*;
+    use fugit::Duration;
+    use crate::FREQ_MONO;
+    pub type MyDuration = Duration<u32, 1, FREQ_MONO>;
+
+    systick_monotonic!(Mono, FREQ_MONO);
 }

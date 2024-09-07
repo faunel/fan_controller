@@ -8,7 +8,7 @@ cargo objdump --bin two --release -- --disassemble --no-show-raw-insn --print-im
 openocd -f interface/stlink.cfg -f target/stm32f4x.cfg
 
 Взнати розмір програми
-cargo size --bin two --release -- -A
+cargo size --bin fan_controller --release -- -A
 .text містить інструкції до програми
 .rodata містить постійні значення, такі як рядки
 .data містить статично виділені змінні, початкові значення яких не дорівнюють нулю

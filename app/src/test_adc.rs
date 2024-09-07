@@ -5,7 +5,7 @@
 mod init;
 mod instant;
 
-#[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, dispatchers = [SPI3, SPI4])]
+#[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, dispatchers = [USART1, USART6])]
 mod app {
     use crate::{
         // init::Init,
@@ -19,7 +19,7 @@ mod app {
     use embedded_graphics::draw_target::DrawTarget;
     use embedded_hal_bus::spi::ExclusiveDevice;
     use heapless::Vec;
-    use measurements::data::Data;
+    use measurements::measurements::Data;
     use mipidsi::{
         models::ST7735s,
         options::{ColorOrder, Orientation, Rotation},
@@ -210,9 +210,6 @@ mod app {
 
         // EXTI pin configuration
         let mut fan1_rpm = gpiob.pb15.into_pull_up_input();
-        let mut fan2_rpm = gpiob.pb14.into_pull_up_input();
-        let mut fan3_rpm = gpiob.pb13.into_pull_up_input();
-        let mut fan4_rpm = gpiob.pb12.into_pull_up_input();
 
         // ADC pin configuration
         let fan1_adc = gpioa.pa1.into_analog();
@@ -225,14 +222,14 @@ mod app {
         let adc_config = AdcConfig::default()
             .dma(Dma::Continuous)
             .scan(Scan::Enabled)
-            .clock(Clock::Pclk2_div_8)
-            .continuous(Continuous::Continuous)
+            .clock(Clock::Pclk2_div_2)
+            .continuous(Continuous::Single)
             .resolution(Resolution::Twelve);
 
         // ADC channel configuration
         let mut adc = Adc::adc1(dp.ADC1, true, adc_config);
-        adc.configure_channel(&fan1_adc, Sequence::One, SampleTime::Cycles_480);
-        adc.configure_channel(&fan2_adc, Sequence::Two, SampleTime::Cycles_480);
+        adc.configure_channel(&fan1_adc, Sequence::One, SampleTime::Cycles_112);
+        adc.configure_channel(&fan2_adc, Sequence::Two, SampleTime::Cycles_112);
         // adc.calibrate();
         // adc.disable_temperature_and_vref();
         // adc.disable_vbat();
@@ -248,13 +245,8 @@ mod app {
             .memory_increment(true)
             .double_buffer(false);
 
-        let mut transfer =
+        let transfer =
             Transfer::init_peripheral_to_memory(dma.0, adc, first_buffer, None, dma_config);
-
-        transfer.start(|adc| {
-            adc.start_conversion();
-            // info!("conversion");
-        });
 
         // EXTI config
         fan1_rpm.make_interrupt_source(&mut syscfg);
@@ -268,7 +260,7 @@ mod app {
         // 11 - Not working
         // 10 - Working
         // 9 - Not working
-        counter_hz.start(4.kHz()).unwrap();
+        counter_hz.start(9.kHz()).unwrap();
         counter_hz.listen(Event::Update);
 
         // Test timer
@@ -332,15 +324,13 @@ mod app {
         // Tasks
         display_menu_task::spawn().unwrap();
         button_task::spawn().unwrap();
-        test_task_rpm::spawn().unwrap();
-        adc_start_task::spawn().unwrap();
-        button_menu_task::spawn().unwrap();
-
         // button_ok_task::spawn().unwrap();
         // button_plus_task::spawn().unwrap();
         // time_task::spawn().unwrap();
         // test_task_temp::spawn().unwrap();
-
+        test_task_rpm::spawn().unwrap();
+        adc_start_task::spawn().unwrap();
+        button_menu_task::spawn().unwrap();
 
         (
             Shared {
@@ -489,7 +479,6 @@ mod app {
                                     Menu::Main => *menu = Menu::Fan(1),
                                     Menu::Fan(fan) => {
                                         *item_setting = ItemSetting::Item(1);
-                                        let prev_fan = *fan;
                                         if *fan < 4 {
                                             *fan += 1;
                                             *menu = Menu::Fan(*fan)
@@ -538,7 +527,6 @@ mod app {
                 }
                 *buttons = AllButton::No;
             });
-            
             Mono::delay(10.millis()).await;
         }
     }
@@ -752,10 +740,10 @@ mod app {
         }
 
         cx.shared.transfer.lock(|transfer| {
-            // transfer.start(|adc| {
-            //     adc.start_conversion();
-            //     // info!("conversion");
-            // });
+            transfer.start(|adc| {
+                adc.start_conversion();
+                // info!("conversion");
+            });
         });
 
         // *cx.local.a += 1;
@@ -801,7 +789,7 @@ mod app {
         }
     }
 
-    #[task(binds = DMA2_STREAM0, shared = [transfer, data], local = [buffer, a: u32 = 0], priority = 3)]
+    #[task(binds = DMA2_STREAM0, shared = [transfer, data], local = [buffer, a: u32 = 0], priority = 2)]
     fn dma(cx: dma::Context) {
         let mut shared = cx.shared;
         let local = cx.local;
@@ -830,7 +818,7 @@ mod app {
             data[1].rpm = voltage_fan1;
         });
 
-        if *local.a % 4_000 == 0 {
+        if *local.a % 5_000 == 0 {
             info!("LOCAL: {}", *local.a);
             info!("fan1: {}, fan2: {}", voltage_fan1, voltage_fan2);
         }

@@ -1,6 +1,7 @@
 use heapless::Vec;
+use ntc::Ntc;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct Data {
     pub temp: u16,
     pub rpm: u16,
@@ -14,6 +15,7 @@ impl Data {
         }
         data
     }
+
 
     pub fn set_temp(&mut self, temp: u16) {
         self.temp = temp;

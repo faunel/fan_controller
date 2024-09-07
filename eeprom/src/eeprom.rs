@@ -15,12 +15,12 @@ type Eeprom = Eeprom24x<
     eeprom24x::unique_serial::No,
 >;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct Settings {
     pub fans: Vec<SettingFan, 4>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct SettingFan {
     pub items: Vec<(u16, u32), 8>,
 }

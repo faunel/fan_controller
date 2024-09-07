@@ -1,6 +1,6 @@
 
 [workspace]
-members = ["app", "ui", "eeprom", "measurements", "async-button", "monotonic"]
+members = ["app", "ui", "eeprom", "measurements", "async-button", "monotonic", "ntc"]
 default-members = ["app"]
 resolver = "2"
 
@@ -24,9 +24,9 @@ button-driver = {version = "0.2.1", features = ["embedded_hal"]}
 embedded-hal = "1.0.0"
 embedded-hal-bus = "0.2.0"
 display-interface-spi = "0.5.0"
-rtic-monotonics = {version = "2.0.2", features = ["cortex-m-systick", "stm32f411cc"]}
+rtic-monotonics = {version = "2.0.2", features = ["cortex-m-systick", "stm32f401cc"]}
 fugit = "0.3.7"
-stm32f4xx-hal = {version = "0.21.0", features = ["stm32f411", "defmt", "tim11", "gpio-f411"]}
+stm32f4xx-hal = {version = "0.21.0", features = ["stm32f401", "defmt", "tim11", "gpio-f401"]}
 panic-semihosting = {version = "0.6.0", features = ["exit"]}
 heapless = { version = "0.8.0", features = ["ufmt"]}
 ufmt = "0.2.0"
@@ -36,7 +36,8 @@ u8g2-fonts = "0.4.0"
 eeprom24x = "0.7.2"
 embassy-futures = "0.1.1"
 enum_dispatch = "0.3.13"
-
+display-interface = "0.5.0"
+libm = "0.2.8"
 
 [profile.release]
 codegen-units = 1   # better optimizations

@@ -1,6 +1,6 @@
 #![no_std]
 
-use config::{ButtonConfig, ButtonMode, HOLD_DURATION_DELAY};
+use config::{ButtonConfig, ButtonMode};
 use monotonic::prelude::*;
 mod config;
 mod pin;

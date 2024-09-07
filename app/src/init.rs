@@ -1,6 +1,6 @@
 use cortex_m::Peripherals as CortexPeripherals;
 use monotonic::prelude::Mono;
-use stm32f4::stm32f411::{Peripherals as STMPeripherals, TIM10};
+use stm32f4::stm32f401::{Peripherals as STMPeripherals, TIM10};
 use stm32f4xx_hal::{
     gpio::{gpioa, gpiob, gpioc},
     prelude::*,

@@ -1,0 +1,16 @@
+[package]
+name = "ntc"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ntc"
+test = false
+bench = false
+
+[dependencies]
+stm32f4xx-hal.workspace = true
+eeprom24x.workspace = true
+heapless.workspace = true
+embedded-hal.workspace = true
+libm.workspace = true

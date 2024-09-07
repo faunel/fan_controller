@@ -28,3 +28,4 @@ embedded-hal-bus.workspace = true
 stm32f4xx-hal.workspace = true
 defmt.workspace = true
 enum_dispatch.workspace = true
+display-interface.workspace = true

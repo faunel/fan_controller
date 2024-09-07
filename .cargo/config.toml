@@ -1,6 +1,6 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip STM32F411CEUx"
-#runner = "qemu-system-arm -cpu cortex-m3 -machine STM32F411CEUx -nographic -semihosting-config enable=on,target=native -kernel"
+runner = "probe-rs run --chip STM32F401CEUx"
+#runner = "qemu-system-arm -cpu cortex-m3 -machine STM32F401CEUx -nographic -semihosting-config enable=on,target=native -kernel"
 
 rustflags = [
   # LLD (shipped with the Rust toolchain) is used as the default linker
