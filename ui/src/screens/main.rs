@@ -1,6 +1,9 @@
-use crate::{config::{DISPLAY_HEIGHT, DISPLAY_WIDTH}, BACKGROUND_COLOR};
+use crate::screens::Screen;
+use crate::{
+    config::{DISPLAY_HEIGHT, DISPLAY_WIDTH},
+    BACKGROUND_COLOR,
+};
 use core::fmt::{Debug, Write};
-use defmt::info;
 use eg_seven_segment::SevenSegmentStyleBuilder;
 use embedded_graphics::{
     pixelcolor::Rgb565,
@@ -9,19 +12,18 @@ use embedded_graphics::{
     text::Text,
     Drawable,
 };
-use heapless::{String, Vec};
-use measurements::data::Data;
+use heapless::String;
+use measurements::measure::Data;
 use u8g2_fonts::{
     fonts,
     types::{FontColor, VerticalPosition},
     FontRenderer,
 };
-use crate::screens::Screen;
 // use ufmt::uwrite;
 // use defmt::{info, println};
 
 pub struct MainScreen<DT, E> {
-    data: Vec<Data, 4>,
+    data: Data,
     is_clear: bool,
     _phantom: core::marker::PhantomData<(DT, E)>,
 }
@@ -33,7 +35,6 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Main
 
     fn draw_static(&mut self, display: &mut DT) {
         if self.is_clear {
-            info!("draw_static");
             display.clear(BACKGROUND_COLOR).unwrap();
             self.draw_grid(display);
             self.draw_labels(display);
@@ -42,14 +43,14 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Main
 }
 
 impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
-    pub fn new(data: Vec<Data, 4>, is_clear: bool) -> Self {
+    #[must_use]
+    pub fn new(data: Data, is_clear: bool) -> Self {
         MainScreen {
             data,
             is_clear,
             _phantom: core::marker::PhantomData,
         }
     }
-
 
     pub fn draw_grid(&self, display: &mut DT) {
         // Горизонтальні лінії
@@ -94,32 +95,11 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
     pub fn draw_labels(&self, display: &mut DT) {
         let font = FontRenderer::new::<fonts::u8g2_font_profont17_mr>();
 
-        font.render(
-            "FAN",
-            Point::new(3, 0),
-            VerticalPosition::Top,
-            FontColor::Transparent(Rgb565::WHITE),
-            display,
-        )
-        .unwrap();
+        font.render("FAN", Point::new(3, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display).unwrap();
 
-        font.render(
-            "TEMP",
-            Point::new(41, 0),
-            VerticalPosition::Top,
-            FontColor::Transparent(Rgb565::WHITE),
-            display,
-        )
-        .unwrap();
+        font.render("TEMP", Point::new(41, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display).unwrap();
 
-        font.render(
-            "RPM",
-            Point::new(108, 0),
-            VerticalPosition::Top,
-            FontColor::Transparent(Rgb565::WHITE),
-            display,
-        )
-        .unwrap();
+        font.render("RPM", Point::new(108, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display).unwrap();
     }
 
     pub fn draw(&self, display: &mut DT) {
@@ -134,98 +114,74 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
 
         // Рядок перший. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
-        Text::new("1", Point::new(8, 39), style_segment)
-            .draw(display)
-            .unwrap();
+        Text::new("1", Point::new(8, 39), style_segment).draw(display).unwrap();
 
         // Рядок перший. Температура
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[0].temp).unwrap();
-        write!(text, "{:02}", self.data[0].temp).unwrap();
-        Text::new(&text, Point::new(43, 39), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:02}", self.data.temp[0]).unwrap();
+        Text::new(&text, Point::new(43, 39), style_segment).draw(display).unwrap();
 
         // Рядок перший. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[0].rpm).unwrap();
-        write!(text, "{:04}", self.data[0].rpm).unwrap();
-        Text::new(&text, Point::new(90, 39), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:04}", self.data.rpm[0]).unwrap();
+        Text::new(&text, Point::new(90, 39), style_segment).draw(display).unwrap();
 
         // Рядок другий. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
-        Text::new("2", Point::new(8, 67), style_segment)
-            .draw(display)
-            .unwrap();
+        Text::new("2", Point::new(8, 67), style_segment).draw(display).unwrap();
 
         // Рядок другий. Температура
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[1].temp).unwrap();
-        write!(text, "{:02}", self.data[1].temp).unwrap();
-        Text::new(&text, Point::new(43, 67), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:02}", self.data.temp[1]).unwrap();
+        Text::new(&text, Point::new(43, 67), style_segment).draw(display).unwrap();
 
         // Рядок другий. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[1].rpm).unwrap();
-        write!(text, "{:04}", self.data[1].rpm).unwrap();
-        Text::new(&text, Point::new(90, 67), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:04}", self.data.rpm[1]).unwrap();
+        Text::new(&text, Point::new(90, 67), style_segment).draw(display).unwrap();
 
         // Рядок третій. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
-        Text::new("3", Point::new(8, 95), style_segment)
-            .draw(display)
-            .unwrap();
+        Text::new("3", Point::new(8, 95), style_segment).draw(display).unwrap();
 
         // Рядок третій. Температура
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[2].temp).unwrap();
-        write!(text, "{:02}", self.data[2].temp).unwrap();
-        Text::new(&text, Point::new(43, 95), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:02}", self.data.temp[2]).unwrap();
+        Text::new(&text, Point::new(43, 95), style_segment).draw(display).unwrap();
 
         // Рядок третій. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[2].rpm).unwrap();
-        write!(text, "{:04}", self.data[2].rpm).unwrap();
-        Text::new(&text, Point::new(90, 95), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:04}", self.data.rpm[2]).unwrap();
+        Text::new(&text, Point::new(90, 95), style_segment).draw(display).unwrap();
 
         // Рядок четвертий. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
-        Text::new("4", Point::new(8, 124), style_segment)
-            .draw(display)
-            .unwrap();
+        Text::new("4", Point::new(8, 124), style_segment).draw(display).unwrap();
 
         // Рядок четвертий. Температура
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[3].temp).unwrap();
-        write!(text, "{:02}", self.data[3].temp).unwrap();
-        Text::new(&text, Point::new(43, 124), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:02}", self.data.temp[3]).unwrap();
+        Text::new(&text, Point::new(43, 124), style_segment).draw(display).unwrap();
 
         // Рядок четвертий. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[3].rpm).unwrap();
-        write!(text, "{:04}", self.data[3].rpm).unwrap();
-        Text::new(&text, Point::new(90, 124), style_segment)
-            .draw(display)
-            .unwrap();
+        write!(text, "{:04}", self.data.rpm[3]).unwrap();
+        Text::new(&text, Point::new(90, 124), style_segment).draw(display).unwrap();
     }
 }

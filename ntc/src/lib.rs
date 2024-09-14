@@ -1,7 +1,4 @@
-
 #![no_std]
-
-
 #![allow(unused)]
 
 use libm::log;
@@ -15,10 +12,11 @@ pub struct Ntc {
     nominal_temp: f32,
     smoothing_coefficient: f32,
 
-    filter_value: f32
+    filter_value: f32,
 }
 
 impl Ntc {
+    #[must_use]
     pub fn new() -> Self {
         Ntc {
             adc_resolution: 1 << 12,
@@ -28,7 +26,7 @@ impl Ntc {
             nominal_temp: 25.0,
             smoothing_coefficient: 1.0,
 
-            filter_value: 0.0
+            filter_value: 0.0,
         }
     }
 
@@ -58,19 +56,19 @@ impl Ntc {
     }
 
     pub fn set_ema_window_size(&mut self, window_size: u16) -> &mut Self {
-        self.smoothing_coefficient = 2.0 / (window_size as f32 + 1.0);
+        self.smoothing_coefficient = 2.0 / (f32::from(window_size) + 1.0);
         self
     }
 
-    pub fn get_temperature(&mut self, adc_value: u16) -> Option<u8> {
-        if adc_value == 0 {
+    pub fn get_temperature(&mut self, adc_value: &u16) -> Option<u8> {
+        if *adc_value == 0 {
             return None;
         }
 
         let resistance_ratio = self.resistor / self.thermistor;
-        let adc_ratio = (self.adc_resolution - 1) as f32 / adc_value as f32 - 1.0;
-        let resistance = (resistance_ratio / adc_ratio) as f64;
-        let temp_kelvin = 1.0 / ((log(resistance) as f32 / self.b_value as f32) + 1.0 / (self.nominal_temp + 273.15));
+        let adc_ratio = f32::from(self.adc_resolution - 1) / f32::from(*adc_value) - 1.0;
+        let resistance = f64::from(resistance_ratio / adc_ratio);
+        let temp_kelvin = 1.0 / ((log(resistance) as f32 / f32::from(self.b_value)) + 1.0 / (self.nominal_temp + 273.15));
         let temp_celsius = temp_kelvin - 273.15;
 
         let filtered_temperature = (self.ema(temp_celsius) + 0.5) as u8;
@@ -79,7 +77,6 @@ impl Ntc {
     }
 
     fn ema(&mut self, value: f32) -> f32 {
-
         if self.filter_value == 0.0 {
             self.filter_value = value;
         }
@@ -89,4 +86,3 @@ impl Ntc {
         self.filter_value
     }
 }
-

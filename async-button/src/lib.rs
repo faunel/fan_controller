@@ -19,8 +19,7 @@ pub struct Button<P> {
     pin: P,
     state: State,
     count: usize,
-    hold_duration: u32,         // Додаємо поле для зберігання часу утримання
-    long_press_detection: bool, // Якщо було довге утримання
+    hold_duration: u32, // Додаємо поле для зберігання часу утримання
     config: ButtonConfig,
 }
 
@@ -50,8 +49,6 @@ pub enum ButtonEvent {
     LongPress,
     /// A long press with duration. This event is returned periodically while the button is held.
     LongPressDuration(u32),
-    // Release after holding the button
-    Released,
 }
 
 impl<P> Button<P>
@@ -66,7 +63,6 @@ where
             count: 0,
             hold_duration: 0,
             config,
-            long_press_detection: false,
         }
     }
 
@@ -95,7 +91,7 @@ where
 
             State::Pressed => {
                 match Mono::timeout_after(self.config.long_press, self.wait_for_release()).await {
-                    Ok(_) => {
+                    Ok(()) => {
                         // Short press
                         self.debounce_delay().await;
                         if self.is_pin_released() {
@@ -106,7 +102,6 @@ where
                     Err(_) => {
                         // Long press detected
                         self.count = 0;
-                        self.long_press_detection = true;
                         self.state = State::PendingRelease;
                         Some(ButtonEvent::LongPress)
                     }
@@ -115,7 +110,7 @@ where
 
             State::Released => {
                 match Mono::timeout_after(self.config.double_click, self.wait_for_press()).await {
-                    Ok(_) => {
+                    Ok(()) => {
                         // Continue sequence
                         self.debounce_delay().await;
                         if self.is_pin_pressed() {
@@ -159,13 +154,8 @@ where
                 if self.is_pin_released() {
                     self.debounce_delay().await; // Додаємо перевірку дребезгу при відпусканні
                     if self.is_pin_released() {
-                        if self.long_press_detection {
-                            self.long_press_detection = false;
-                            Some(ButtonEvent::Released)
-                        } else {
-                            self.state = State::Idle;
-                            None
-                        }
+                        self.state = State::Idle;
+                        None
                     } else {
                         self.hold_duration += self.config.hold_duration_delay;
                         // Відправка події з оновленим часом утримання

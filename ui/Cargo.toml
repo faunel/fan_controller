@@ -17,10 +17,7 @@ eeprom = { path = "../eeprom"}
 embedded-graphics.workspace = true
 heapless.workspace = true
 u8g2-fonts.workspace = true
-
-# rtic-monotonics = { workspace = true, optional = true }
 ufmt.workspace = true
-fugit.workspace = true
 mipidsi.workspace = true
 display-interface-spi.workspace = true
 eg-seven-segment.workspace = true
@@ -28,4 +25,3 @@ embedded-hal-bus.workspace = true
 stm32f4xx-hal.workspace = true
 defmt.workspace = true
 enum_dispatch.workspace = true
-display-interface.workspace = true

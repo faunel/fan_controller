@@ -215,8 +215,5 @@ async fn sleep_millis(millis: u64) {
 }
 
 async fn verify_no_event(button: &mut Button<MockPin>) {
-    assert_err!(
-        timeout(Duration::from_millis(500), button.update()).await,
-        "Unexpected event"
-    );
+    assert_err!(timeout(Duration::from_millis(500), button.update()).await, "Unexpected event");
 }

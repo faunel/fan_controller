@@ -11,4 +11,8 @@ bench = false
 
 [dependencies]
 ntc = {path = "../ntc"}
+eeprom = {path = "../eeprom"}
 heapless.workspace = true
+cortex-m.workspace = true
+defmt.workspace = true
+stm32f4xx-hal.workspace = true

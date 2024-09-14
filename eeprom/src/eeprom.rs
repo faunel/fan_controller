@@ -1,267 +1,262 @@
-use crate::default_settings;
+// #![allow(unused)]
+
+use crate::default_settings::DEFAULT_SETTINGS;
+use defmt::info;
 use eeprom24x::{Eeprom24x, SlaveAddr};
 use heapless::Vec;
-use stm32f4xx_hal::{
-    i2c::I2c,
-    pac::{self, I2C2},
-    prelude::*,
-    timer,
-};
+use monotonic::prelude::*;
+use stm32f4xx_hal::{i2c::I2c, pac::I2C2};
 
-type Eeprom = Eeprom24x<
-    I2c<I2C2>,
-    eeprom24x::page_size::B64,
-    eeprom24x::addr_size::TwoBytes,
-    eeprom24x::unique_serial::No,
->;
+type Eeprom = Eeprom24x<I2c<I2C2>, eeprom24x::page_size::B64, eeprom24x::addr_size::TwoBytes, eeprom24x::unique_serial::No>;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Settings {
     pub fans: Vec<SettingFan, 4>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct SettingFan {
-    pub items: Vec<(u16, u32), 8>,
+    pub thresold: Vec<Thresolds, 4>,
 }
 
-// #[derive(Debug)]
-// pub struct Thresholds {
-//     pub temp: (u16, u32),
-//     pub pwm: (u16, u32),
-// }
+#[derive(Debug, Default, Clone)]
+pub struct Thresolds {
+    pub temp: Items,
+    pub pwm: Items,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Items {
+    pub data: u16,
+    pub address: u32,
+}
+
 
 pub struct EEPROM {
     eeprom: Eeprom,
-    delay_source: timer::Delay<pac::TIM10, 1000000>,
 }
 
 #[allow(clippy::new_without_default)]
 impl Settings {
+    #[must_use]
     pub fn new() -> Self {
         let mut current_address: u32 = 0;
 
-        let fans: Vec<SettingFan, 4> = (0..4)
-            .map(|_| SettingFan::new(&mut current_address))
-            .collect();
+        let fans: Vec<SettingFan, 4> = (0..4).map(|_| SettingFan::new(&mut current_address)).collect();
 
         Settings { fans }
     }
 
-    pub fn get(&self, field: (u16, u32)) -> u16 {
-        field.0
+    pub fn get(&mut self, fan: &usize, selector: &usize) -> (u16, u16, &mut u16) {
+        match selector {
+            1 => {
+                (
+                    self.fans[*fan - 1].thresold[0].temp.data,
+                    self.fans[*fan - 1].thresold[0 + 1].temp.data,
+                    &mut self.fans[*fan - 1].thresold[0].temp.data,
+                )
+            },
+            2 => {
+                (
+                    self.fans[*fan - 1].thresold[0].pwm.data,
+                    self.fans[*fan - 1].thresold[0 + 1].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[0].pwm.data,
+                )
+            },
+            3 => {
+                (
+                    self.fans[*fan - 1].thresold[1 - 1].temp.data,
+                    self.fans[*fan - 1].thresold[1 + 1].temp.data,
+                    &mut self.fans[*fan - 1].thresold[1].temp.data,
+                )
+            },
+            4 => {
+                (
+                    self.fans[*fan - 1].thresold[1 - 1].pwm.data,
+                    self.fans[*fan - 1].thresold[1 + 1].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[1].pwm.data,
+                )
+            },
+            5 => {
+                (
+                    self.fans[*fan - 1].thresold[2 - 1].temp.data,
+                    self.fans[*fan - 1].thresold[2 + 1].temp.data,
+                    &mut self.fans[*fan - 1].thresold[2].temp.data,
+                )
+            },
+            6 => {
+                (
+                    self.fans[*fan - 1].thresold[2 - 1].pwm.data,
+                    self.fans[*fan - 1].thresold[2 + 1].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[2].pwm.data,
+                )
+            },
+            7 => {
+                (
+                    self.fans[*fan - 1].thresold[3 - 1].temp.data,
+                    self.fans[*fan - 1].thresold[3].temp.data,
+                    &mut self.fans[*fan - 1].thresold[3].temp.data,
+                )
+            },
+            8 => {
+                (
+                    self.fans[*fan - 1].thresold[3 - 1].pwm.data,
+                    self.fans[*fan - 1].thresold[3].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[3].pwm.data,
+                )
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get_mut(&mut self, fan: &usize, selector: &usize) -> (u16, u16, &mut u16) {
+        match selector {
+            1 => {
+                (
+                    self.fans[*fan - 1].thresold[0].temp.data,
+                    self.fans[*fan - 1].thresold[0 + 1].temp.data,
+                    &mut self.fans[*fan - 1].thresold[0].temp.data,
+                )
+            },
+            2 => {
+                (
+                    self.fans[*fan - 1].thresold[0].pwm.data,
+                    self.fans[*fan - 1].thresold[0 + 1].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[0].pwm.data,
+                )
+            },
+            3 => {
+                (
+                    self.fans[*fan - 1].thresold[1 - 1].temp.data,
+                    self.fans[*fan - 1].thresold[1 + 1].temp.data,
+                    &mut self.fans[*fan - 1].thresold[1].temp.data,
+                )
+            },
+            4 => {
+                (
+                    self.fans[*fan - 1].thresold[1 - 1].pwm.data,
+                    self.fans[*fan - 1].thresold[1 + 1].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[1].pwm.data,
+                )
+            },
+            5 => {
+                (
+                    self.fans[*fan - 1].thresold[2 - 1].temp.data,
+                    self.fans[*fan - 1].thresold[2 + 1].temp.data,
+                    &mut self.fans[*fan - 1].thresold[2].temp.data,
+                )
+            },
+            6 => {
+                (
+                    self.fans[*fan - 1].thresold[2 - 1].pwm.data,
+                    self.fans[*fan - 1].thresold[2 + 1].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[2].pwm.data,
+                )
+            },
+            7 => {
+                (
+                    self.fans[*fan - 1].thresold[3 - 1].temp.data,
+                    self.fans[*fan - 1].thresold[3].temp.data,
+                    &mut self.fans[*fan - 1].thresold[3].temp.data,
+                )
+            },
+            8 => {
+                (
+                    self.fans[*fan - 1].thresold[3 - 1].pwm.data,
+                    self.fans[*fan - 1].thresold[3].pwm.data,
+                    &mut self.fans[*fan - 1].thresold[3].pwm.data,
+                )
+            },
+            _ => unreachable!(),
+        }
     }
 }
 
 impl SettingFan {
     pub fn new(current_address: &mut u32) -> Self {
-        let items: Vec<(u16, u32), 8> = (0..8)
-            .map(|_| {
-                *current_address += 16;
-                (0, *current_address)
-            })
-            .collect();
-
-        SettingFan { items }
+        SettingFan {
+            thresold: (0..4).map(|_| Thresolds::new(current_address)).collect(),
+        }
     }
-    // pub fn new(current_address: &mut u32) -> Self {
-    //     let items: Vec<(u16, u32), 4> =
-    //         (0..4).map(|_| Thresholds::new(current_address)).collect();
-
-    //     SettingFan { items }
-    // }
 }
 
-// impl Thresholds {
-//     pub fn new(current_address: &mut u32) -> Self {
-//         let temp = (0, *current_address);
-//         *current_address += 16;
+impl Thresolds {
+    pub fn new(current_address: &mut u32) -> Self {
+        let temp = Items { data: 0, address: *current_address };
+        *current_address += 16;
 
-//         let pwm = (0, *current_address);
-//         *current_address += 16;
+        let pwm = Items { data: 0, address: *current_address };
+        *current_address += 16;
 
-//         Thresholds { temp, pwm }
-//     }
-
-//     pub fn get_temp(&self) -> u16 {
-//         self.temp.0
-//     }
-
-//     pub fn get_pwm(&self) -> u16 {
-//         self.pwm.0
-//     }
-
-//     pub fn set_temp(&mut self, temp: u16) {
-//         self.temp.0 = temp;
-//     }
-
-//     pub fn set_pwm(&mut self, pwm: u16) {
-//         self.pwm.0 = pwm;
-//     }
-// }
+        Thresolds { temp, pwm }
+    }
+}
 
 impl EEPROM {
-    pub fn new(i2c: I2c<I2C2>, delay_source: timer::Delay<pac::TIM10, 1000000>) -> Self {
+    #[must_use]
+    pub fn new(i2c: I2c<I2C2>) -> Self {
         EEPROM {
             eeprom: Eeprom24x::new_24x256(i2c, SlaveAddr::default()),
-            delay_source,
         }
     }
 
-    pub fn save(&mut self, field: &mut (u16, u32), data: u16) {
+    pub async fn save(&mut self, address: &u32, data: &u16) {
         let bytes = data.to_le_bytes();
-        self.eeprom.write_page(field.1, &bytes).unwrap();
-        field.0 = data;
-        self.delay_source.delay_ms(5);
+        self.eeprom.write_page(*address, &bytes).unwrap();
+        // field.data = data;
+        Mono::delay(5.millis()).await;
+        // self.delay_source.delay_ms(5);
     }
 
-    pub fn read(&mut self, field: (u16, u32)) -> u16 {
+    pub async fn read(&mut self, address: &u32) -> u16 {
         let mut buffer = [0; 2];
-        self.eeprom.read_data(field.1, &mut buffer).unwrap();
-
-        self.delay_source.delay_us(100);
+        self.eeprom.read_data(*address, &mut buffer).unwrap();
+        Mono::delay(100.micros()).await;
+        // self.delay_source.delay_us(100);
         u16::from_le_bytes(buffer)
     }
 
-    pub fn default_settings(&mut self, settings: &mut Settings) {
-        self.save(
-            &mut settings.fans[0].items[0],
-            default_settings::FAN1_THRESOLD_1_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[0].items[1],
-            default_settings::FAN1_THRESOLD_1_PWM,
-        );
-        self.save(
-            &mut settings.fans[0].items[2],
-            default_settings::FAN1_THRESOLD_2_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[0].items[3],
-            default_settings::FAN1_THRESOLD_2_PWM,
-        );
-        self.save(
-            &mut settings.fans[0].items[4],
-            default_settings::FAN1_THRESOLD_3_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[0].items[5],
-            default_settings::FAN1_THRESOLD_3_PWM,
-        );
-        self.save(
-            &mut settings.fans[0].items[6],
-            default_settings::FAN1_THRESOLD_4_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[0].items[7],
-            default_settings::FAN1_THRESOLD_4_PWM,
-        );
+    pub async fn default_settings(&mut self, settings: &mut Settings) {
+        for fan in 0..4 {
+            for (thresold, data) in DEFAULT_SETTINGS.iter().enumerate() {
+                #[allow(clippy::get_first)]
+                let temp = data.get(0).unwrap();
+                let pwm = data.get(1).unwrap();
 
-        self.save(
-            &mut settings.fans[1].items[0],
-            default_settings::FAN2_THRESOLD_1_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[1].items[1],
-            default_settings::FAN2_THRESOLD_1_PWM,
-        );
-        self.save(
-            &mut settings.fans[1].items[2],
-            default_settings::FAN2_THRESOLD_2_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[1].items[3],
-            default_settings::FAN2_THRESOLD_2_PWM,
-        );
-        self.save(
-            &mut settings.fans[1].items[4],
-            default_settings::FAN2_THRESOLD_3_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[1].items[5],
-            default_settings::FAN2_THRESOLD_3_PWM,
-        );
-        self.save(
-            &mut settings.fans[1].items[6],
-            default_settings::FAN2_THRESOLD_4_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[1].items[7],
-            default_settings::FAN2_THRESOLD_4_PWM,
-        );
+                settings.fans[fan].thresold[thresold].temp.data = *temp;
+                self.save(&settings.fans[fan].thresold[thresold].temp.address, temp).await;
 
-        self.save(
-            &mut settings.fans[2].items[0],
-            default_settings::FAN3_THRESOLD_1_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[2].items[1],
-            default_settings::FAN3_THRESOLD_1_PWM,
-        );
-        self.save(
-            &mut settings.fans[2].items[2],
-            default_settings::FAN3_THRESOLD_2_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[2].items[3],
-            default_settings::FAN3_THRESOLD_2_PWM,
-        );
-        self.save(
-            &mut settings.fans[2].items[4],
-            default_settings::FAN3_THRESOLD_3_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[2].items[5],
-            default_settings::FAN3_THRESOLD_3_PWM,
-        );
-        self.save(
-            &mut settings.fans[2].items[6],
-            default_settings::FAN3_THRESOLD_4_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[2].items[7],
-            default_settings::FAN3_THRESOLD_4_PWM,
-        );
-
-        self.save(
-            &mut settings.fans[3].items[0],
-            default_settings::FAN4_THRESOLD_1_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[3].items[1],
-            default_settings::FAN4_THRESOLD_1_PWM,
-        );
-        self.save(
-            &mut settings.fans[3].items[2],
-            default_settings::FAN4_THRESOLD_2_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[3].items[3],
-            default_settings::FAN4_THRESOLD_2_PWM,
-        );
-        self.save(
-            &mut settings.fans[3].items[4],
-            default_settings::FAN4_THRESOLD_3_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[3].items[5],
-            default_settings::FAN4_THRESOLD_3_PWM,
-        );
-        self.save(
-            &mut settings.fans[3].items[6],
-            default_settings::FAN4_THRESOLD_4_TEMPERATURE,
-        );
-        self.save(
-            &mut settings.fans[3].items[7],
-            default_settings::FAN4_THRESOLD_4_PWM,
-        );
+                settings.fans[fan].thresold[thresold].pwm.data = *pwm;
+                self.save(&settings.fans[fan].thresold[thresold].pwm.address, pwm).await;
+            }
+        }
     }
 
-    pub fn load_settings(&mut self, settings: &mut Settings) {
+    pub async fn load_settings(&mut self, settings: &mut Settings) {
         for fan in 0..4 {
-            for thresold in 0..8 {
-                settings.fans[fan].items[thresold].0 =
-                    self.read(settings.fans[fan].items[thresold]);
+            for thresold in 0..4 {
+                settings.fans[fan].thresold[thresold].temp.data = self.read(&settings.fans[fan].thresold[thresold].temp.address).await;
+                settings.fans[fan].thresold[thresold].pwm.data = self.read(&settings.fans[fan].thresold[thresold].pwm.address).await;
+            }
+        }
+    }
+
+    pub async fn save_all(&mut self, settings: &mut Settings) {
+        for fan in 0..4 {
+            for thresold in 0..4 {
+                let temp_address = &settings.fans[fan].thresold[thresold].temp.address;
+                let temp_data = &settings.fans[fan].thresold[thresold].temp.data;
+                if *temp_data != self.read(temp_address).await {
+                    self.save(temp_address, temp_data).await;
+                    info!("fan: {}, thresold: {}, data: {}", fan, thresold, temp_data);
+                }
+
+                let pwm_address = &settings.fans[fan].thresold[thresold].pwm.address;
+                let pwm_data = &settings.fans[fan].thresold[thresold].pwm.data;
+                if *pwm_data != self.read(pwm_address).await {
+                    self.save(pwm_address, pwm_data).await;
+                    info!("fan: {}, thresold: {}, data: {}", fan, thresold, pwm_data);
+                }
             }
         }
     }

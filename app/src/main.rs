@@ -1,33 +1,30 @@
 #![no_main]
 #![no_std]
-#![allow(unused)]
-
-mod init;
-mod instant;
+// #![allow(unused)]
 
 #[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, dispatchers = [SPI3, SPI4])]
 mod app {
-    use crate::{
-        // init::Init,
-        instant::{GLOBAL_TIMER_COUNTER, TIMER_PERIOD},
-    };
     use async_button::prelude::*;
-    // use core::cell::UnsafeCell;
+    use cortex_m::interrupt::Mutex;
     use defmt::info;
     use display_interface_spi::SPIInterface;
-    use eeprom::eeprom::{SettingFan, Settings, EEPROM};
-    use embedded_graphics::draw_target::DrawTarget;
+    use eeprom::eeprom::{Settings, EEPROM};
+    use embassy_futures::select::{select3, Either3};
     use embedded_hal_bus::spi::ExclusiveDevice;
-    use heapless::Vec;
-    use measurements::data::Data;
+    use heapless::{pool::arc::{Arc, ArcBlock}, Vec};
+    use measurements::{
+        control::Control,
+        measure::{AdcMeasure, Data, ImpulsesComplete, ImpulsesRaw, SetImpulsesComplete},
+        ADC_BUFFER,
+    };
     use mipidsi::{
+        error::Error as DisplayError,
         models::ST7735s,
         options::{ColorOrder, Orientation, Rotation},
         Builder,
-        error::Error as DisplayError
     };
     use monotonic::prelude::*;
-    use stm32f4::stm32f401::{ADC1, DMA2};
+    use stm32f4::stm32f401::{ADC1, DMA2, TIM4, TIM5, TIM9};
     use stm32f4xx_hal::{
         adc::{
             config::{AdcConfig, Clock, Continuous, Dma, Resolution, SampleTime, Scan, Sequence},
@@ -36,89 +33,66 @@ mod app {
         dma::{config::DmaConfig, PeripheralToMemory, Stream0, StreamsTuple, Transfer},
         gpio::{Edge, Output, Pin, Speed},
         i2c::{self, I2c},
-        pac::{I2C2, TIM10, TIM11, SPI1},
+        pac::{I2C2, TIM1, TIM11},
         prelude::*,
         rcc::RccExt,
         spi::{Mode, NoMiso, Phase, Polarity, Spi},
         timer::{self, CounterHz, Event, Flag, Timer},
     };
-    use ui::{main::MainScreen, menu::{AllButton, ButtonState, Menu}, screens::{start::StartScreen, Screen, Screens}, setting::SettingScreen};
     use ui::setting::ItemSetting;
-
-    use embassy_futures::select::{select3, Either3};
-    use ui::{Display, BACKGROUND_COLOR};
+    use ui::Display;
+    use ui::{
+        main::MainScreen,
+        Menu,
+        screens::{start::StartScreen, Screen, Screens},
+        setting::SettingScreen,
+    };
     use {defmt_rtt as _, panic_probe as _};
-    use display_interface::WriteOnlyDataCommand;
 
-    type DMATransfer =
-        Transfer<Stream0<DMA2>, 0, Adc<ADC1>, PeripheralToMemory, &'static mut [u16; 2]>;
+    type DMATransfer = Transfer<Stream0<DMA2>, 0, Adc<ADC1>, PeripheralToMemory, &'static mut [u16; ADC_BUFFER]>;
 
     #[shared]
     struct Shared {
-        // display: UnsafeCell<Display>,
-        data: Vec<Data, 4>,
-        frequency: u16,
-        #[lock_free]
-        interrupt_count: u16,
+        data: Data,
         transfer: DMATransfer,
         menu: Menu,
         settings: Settings,
         item_setting: ItemSetting,
         is_clear: bool,
-        eeprom: EEPROM,
-        buttons: AllButton
+        no_click_timer: Option<u8>,
+        impulses_raw: ImpulsesRaw,
+        #[lock_free]
+        impulses_complete: Option<ImpulsesComplete>,
+        adc_buffer: Option<[u16; ADC_BUFFER]>,
     }
 
     #[local]
     struct Local {
         display: Display,
         led: Pin<'C', 13, Output>,
-        fan1_rpm: Pin<'B', 15>,
-        counter_hz: CounterHz<TIM11>,
-        buffer: Option<&'static mut [u16; 2]>,
+        fan1_exti: Pin<'B', 15>,
+        fan2_exti: Pin<'B', 14>,
+        fan3_exti: Pin<'B', 13>,
+        fan4_exti: Pin<'B', 12>,
+        tim_5: CounterHz<TIM5>,
+        tim_9: CounterHz<TIM9>,
+        tim_11: CounterHz<TIM11>,
+        buffer: Option<&'static mut [u16; ADC_BUFFER]>,
         btn_minus_async: WaitPin<Pin<'A', 10>>,
         btn_ok_async: WaitPin<Pin<'A', 0>>,
         btn_plus_async: WaitPin<Pin<'A', 9>>,
+        eeprom: EEPROM,
+        adc: AdcMeasure,
+        control: Control,
     }
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        // let dp = cx.device;
-        // let cp = cx.core;
-
-        //     let init = Init::new(cx.device, cx.core);
-
-        //     // syscfg
-        //     // let mut syscfg = dp.SYSCFG.constrain();
-
-        //     // Clock configuration
-        //     let clocks = init.clocks();
-
-        //     // GPIO
-        //     let (gpioa, gpiob, gpioc) = init.gpio();
-
-        //     // let mut delay = cp.SYST.delay(&clocks);
-        //     let mut delay = init.delay(&clocks);
-
-        //     // Monotonic timer
-        //    init.mono_start(&clocks);
-
         let dp = cx.device;
         let cp = cx.core;
 
-        // Init;
-
-        // syscfg
-        // let mut syscfg = dp.SYSCFG.constrain();
-
         // Clock configuration
-        let clocks = dp
-            .RCC
-            .constrain()
-            .cfgr
-            .use_hse(25.MHz())
-            .sysclk(80.MHz())
-            .freeze();
+        let clocks = dp.RCC.constrain().cfgr.use_hse(25.MHz()).sysclk(80.MHz()).freeze();
 
         // GPIO
         let gpioa = dp.GPIOA.split();
@@ -129,60 +103,6 @@ mod app {
 
         // Monotonic timer
         Mono::start(cp.SYST, clocks.sysclk().to_Hz());
-
-        let mut syscfg = dp.SYSCFG.constrain();
-
-        // eeprom.read(&mut settings.fans[0].thresholds[0].temp);
-        // eeprom.read(&mut settings.fans[0].thresholds[0].pwm);
-
-        // eeprom.read(&mut settings.fans[0].thresholds[1].temp);
-        // eeprom.read(&mut settings.fans[0].thresholds[1].pwm);
-
-        // eeprom.read(&mut settings.fans[0].thresholds[2].temp);
-        // eeprom.read(&mut settings.fans[0].thresholds[2].pwm);
-
-        // eeprom.read(&mut settings.fans[0].thresholds[3].temp);
-        // eeprom.read(&mut settings.fans[0].thresholds[3].pwm);
-
-        // info!("data: {}", settings.fan4.temp.0);
-        // info!("data: {}", settings.fan4.get_temp());
-        // info!("data: {}", settings.get(settings.fan4.temp));
-
-        // eeprom.save(&mut settings.fan1.temp, 5566);
-        // info!("data: {}", settings.get(settings.fan1.temp));
-
-        // eeprom.save(&mut settings.fans[0].thresholds[0].temp, 30);
-        // eeprom.save(&mut settings.fans[0].thresholds[0].pwm, 20);
-
-        // eeprom.save(&mut settings.fans[0].thresholds[1].temp, 40);
-        // eeprom.save(&mut settings.fans[0].thresholds[1].pwm, 35);
-
-        // eeprom.save(&mut settings.fans[0].thresholds[2].temp, 50);
-        // eeprom.save(&mut settings.fans[0].thresholds[2].pwm, 60);
-
-        // eeprom.save(&mut settings.fans[0].thresholds[3].temp, 70);
-        // eeprom.save(&mut settings.fans[0].thresholds[3].pwm, 100);
-
-        // let value = eeprom.read(settings.fan1.pwm);
-        // info!("data: {}", value);
-
-        // let value = eeprom.read(settings.fan2.temp);
-        // info!("data: {}", value);
-
-        // let value = eeprom.read(settings.fan2.pwm);
-        // info!("data: {}", value);
-
-        // let value = eeprom.read(settings.fan3.temp);
-        // info!("data: {}", value);
-
-        // let value = eeprom.read(settings.fan3.pwm);
-        // info!("data: {}", value);
-
-        // let value = eeprom.read(settings.fan4.temp);
-        // info!("data: {}", value);
-
-        // let value = eeprom.read(settings.fan4.pwm);
-        // info!("data: {}", value);
 
         // SPI1 pin configuration
         let sck = gpioa.pa5.into_alternate().speed(Speed::VeryHigh);
@@ -202,21 +122,21 @@ mod app {
         let btn_ok_async = WaitPin::new(btn_ok);
         let btn_plus_async = WaitPin::new(btn_plus);
 
-       
-
         // LED pin configuration
         let mut led = gpioc.pc13.into_push_pull_output();
         led.set_high();
 
         // EXTI pin configuration
-        let mut fan1_rpm = gpiob.pb15.into_pull_up_input();
-        let mut fan2_rpm = gpiob.pb14.into_pull_up_input();
-        let mut fan3_rpm = gpiob.pb13.into_pull_up_input();
-        let mut fan4_rpm = gpiob.pb12.into_pull_up_input();
+        let mut fan1_exti = gpiob.pb15.into_pull_up_input();
+        let mut fan2_exti = gpiob.pb14.into_pull_up_input();
+        let mut fan3_exti = gpiob.pb13.into_pull_up_input();
+        let mut fan4_exti = gpiob.pb12.into_pull_up_input();
 
         // ADC pin configuration
         let fan1_adc = gpioa.pa1.into_analog();
         let fan2_adc = gpioa.pa2.into_analog();
+        let fan3_adc = gpioa.pa3.into_analog();
+        let fan4_adc = gpioa.pa4.into_analog();
 
         // DMA stream
         let dma = StreamsTuple::new(dp.DMA2);
@@ -233,50 +153,93 @@ mod app {
         let mut adc = Adc::adc1(dp.ADC1, true, adc_config);
         adc.configure_channel(&fan1_adc, Sequence::One, SampleTime::Cycles_480);
         adc.configure_channel(&fan2_adc, Sequence::Two, SampleTime::Cycles_480);
-        // adc.calibrate();
-        // adc.disable_temperature_and_vref();
-        // adc.disable_vbat();
+        adc.configure_channel(&fan3_adc, Sequence::Three, SampleTime::Cycles_480);
+        adc.configure_channel(&fan4_adc, Sequence::Four, SampleTime::Cycles_480);
 
-        // These buffers need to be 'static to use safely with the DMA - we can't allow them to be dropped while the DMA is accessing them.
-        // The easiest way to satisfy that is to make them static, and the safest way to do that is with `cortex_m::singleton!`
-        let first_buffer = cortex_m::singleton!(: [u16; 2] = [0; 2]).unwrap();
-        let adc_dma_buffer = Some(cortex_m::singleton!(: [u16; 2] = [0; 2]).unwrap());
+        let adc_buffer = [0; ADC_BUFFER];
+        let first_buffer = cortex_m::singleton!(: [u16; ADC_BUFFER] = [0; ADC_BUFFER]).unwrap();
+        let adc_dma_buffer = Some(cortex_m::singleton!(: [u16; ADC_BUFFER] = [0; ADC_BUFFER]).unwrap());
 
         // DMA config
-        let dma_config = DmaConfig::default()
-            .transfer_complete_interrupt(true)
-            .memory_increment(true)
-            .double_buffer(false);
+        let dma_config = DmaConfig::default().transfer_complete_interrupt(true).memory_increment(true).double_buffer(false);
 
-        let mut transfer =
-            Transfer::init_peripheral_to_memory(dma.0, adc, first_buffer, None, dma_config);
+        // DMA transfer
+        let transfer = Transfer::init_peripheral_to_memory(dma.0, adc, first_buffer, None, dma_config);
 
-        transfer.start(|adc| {
-            adc.start_conversion();
-            // info!("conversion");
-        });
+        //---------------------------- Конфігурація апаратних переривань -----------------------
 
-        // EXTI config
-        fan1_rpm.make_interrupt_source(&mut syscfg);
+        let mut syscfg = dp.SYSCFG.constrain();
         let mut exti = dp.EXTI;
-        fan1_rpm.enable_interrupt(&mut exti);
-        fan1_rpm.trigger_on_edge(&mut exti, Edge::Falling);
 
-        // Timer config. For frequency measurement of EXTI pin
+        // EXTI pb15 config. Частота вентилятора
+        fan1_exti.make_interrupt_source(&mut syscfg);
+        fan1_exti.enable_interrupt(&mut exti);
+        fan1_exti.trigger_on_edge(&mut exti, Edge::Falling);
+
+        // EXTI pb14 config. Частота вентилятора
+        fan2_exti.make_interrupt_source(&mut syscfg);
+        fan2_exti.enable_interrupt(&mut exti);
+        fan2_exti.trigger_on_edge(&mut exti, Edge::Falling);
+
+        // EXTI pb13 config. Частота вентилятора
+        fan3_exti.make_interrupt_source(&mut syscfg);
+        fan3_exti.enable_interrupt(&mut exti);
+        fan3_exti.trigger_on_edge(&mut exti, Edge::Falling);
+
+        // EXTI pb12 config. Частота вентилятора
+        fan4_exti.make_interrupt_source(&mut syscfg);
+        fan4_exti.enable_interrupt(&mut exti);
+        fan4_exti.trigger_on_edge(&mut exti, Edge::Falling);
+
+        // TIM5. Для відправки виміряних даних на дисплей (температура і оберти).
+        // І управління логікою на основі виміряних даних
+        // Викликати кожні 40 мс
+        let timer = Timer::new(dp.TIM5, &clocks);
+        let mut tim_5 = timer.counter_hz();
+        tim_5.start(25.Hz()).unwrap();
+        tim_5.listen(Event::Update);
+
+        // TIM4. PWM для вентиляторів
+        // Рекомендована частота 25 кілогерц
+        let ch_1: timer::ChannelBuilder<TIM4, 0> = timer::Channel1::new(gpiob.pb6);
+        let ch_2: timer::ChannelBuilder<TIM4, 1> = timer::Channel2::new(gpiob.pb7);
+        let ch_3: timer::ChannelBuilder<TIM4, 2> = timer::Channel3::new(gpiob.pb8);
+        let ch_4: timer::ChannelBuilder<TIM4, 3> = timer::Channel4::new(gpiob.pb9);
+        let timer = Timer::new(dp.TIM4, &clocks);
+        let mut tim_4 = timer.pwm_hz((ch_1, ch_2, ch_3, ch_4), 25.kHz());
+        tim_4.set_duty(timer::Channel::C1, 0);
+        tim_4.set_duty(timer::Channel::C2, 0);
+        tim_4.set_duty(timer::Channel::C3, 0);
+        tim_4.set_duty(timer::Channel::C4, 0);
+        tim_4.enable(timer::Channel::C1);
+        tim_4.enable(timer::Channel::C2);
+        tim_4.enable(timer::Channel::C3);
+        tim_4.enable(timer::Channel::C4);
+        let tim_4 = tim_4.split();
+
+        // TIM9. Для вимірювання частоти вентиляторів.
+        // Викликати раз на секунду
+        let timer = Timer::new(dp.TIM9, &clocks);
+        let mut tim_9 = timer.counter_hz();
+        tim_9.start(1.Hz()).unwrap();
+        tim_9.listen(Event::Update);
+
+        // TIM11. Для запуску АЦП
+        // Викликати раз в мілісекунду
         let timer: Timer<TIM11> = Timer::new(dp.TIM11, &clocks);
-        let mut counter_hz: CounterHz<TIM11> = timer.counter_hz();
-        // 11 - Not working
-        // 10 - Working
-        // 9 - Not working
-        counter_hz.start(4.kHz()).unwrap();
-        counter_hz.listen(Event::Update);
+        let mut tim_11: CounterHz<TIM11> = timer.counter_hz();
+        tim_11.start(100.Hz()).unwrap();
+        tim_11.listen(Event::Update);
 
-        // Test timer
-        let channels = timer::Channel1::new(gpioa.pa8);
+        // Для тесту RPM
         let timer = Timer::new(dp.TIM1, &clocks);
-        let mut pwm = timer.pwm_hz(channels, 14880.Hz());
-        pwm.set_duty(timer::Channel::C1, pwm.get_max_duty() / 2);
-        pwm.enable(timer::Channel::C1);
+        let channels: timer::ChannelBuilder<TIM1, 0> = timer::Channel1::new(gpioa.pa8);
+        let mut tim_1: timer::PwmHz<TIM1, timer::ChannelBuilder<TIM1, 0>> = timer.pwm_hz(channels, 10_000.Hz());
+        tim_1.set_duty(timer::Channel::C1, tim_1.get_max_duty() / 2);
+        tim_1.enable(timer::Channel::C1);
+
+        //---------------------------------------------------
+
 
         // SPI1 mode configuration
         let mode = Mode {
@@ -300,82 +263,124 @@ mod app {
             .init(&mut delay)
             .unwrap();
 
-        // display.clear(BACKGROUND_COLOR).unwrap();
-
-        // delay.delay_ms(1000);
-
-        // Configure I2C2
+        // Config I2C2
         let scl = gpiob.pb10;
         let sda = gpiob.pb3.into_floating_input();
         let i2c: I2c<I2C2> = I2c::new(dp.I2C2, (scl, sda), i2c::Mode::standard(100.kHz()), &clocks);
 
-        let mut settings = Settings::new();
-
-        let mut eeprom = EEPROM::new(i2c, delay);
-        eeprom.load_settings(&mut settings);
-
-        // info!("data: {}", settings.fans[0].thresholds[0].get_temp());
-        // info!("data: {}", settings.fans[0].thresholds[0].get_pwm());
-
-        // info!("data: {}", settings.fans[0].thresholds[1].get_temp());
-        // info!("data: {}", settings.fans[0].thresholds[1].get_pwm());
-
-        // info!("data: {}", settings.fans[0].thresholds[2].get_temp());
-        // info!("data: {}", settings.fans[0].thresholds[2].get_pwm());
-
-        // info!("data: {}", settings.fans[0].thresholds[3].get_temp());
-        // info!("data: {}", settings.fans[0].thresholds[3].get_pwm());
-
-        // Fan data
-        let data: Vec<Data, 4> = Data::new();
+        let settings = Settings::new();
+        let eeprom = EEPROM::new(i2c);
 
         // Tasks
-        display_menu_task::spawn().unwrap();
+        no_click_timer::spawn().unwrap();
+        save::spawn().unwrap();
         button_task::spawn().unwrap();
-        test_task_rpm::spawn().unwrap();
-        adc_start_task::spawn().unwrap();
-        button_menu_task::spawn().unwrap();
-
+        display_menu_task::spawn().unwrap();
+        // test_task_rpm::spawn().unwrap();
+        // button_menu_task::spawn().unwrap();
         // button_ok_task::spawn().unwrap();
         // button_plus_task::spawn().unwrap();
         // time_task::spawn().unwrap();
         // test_task_temp::spawn().unwrap();
 
-
         (
             Shared {
-                // display: UnsafeCell::new(display),
-                data,
-                frequency: 0,
-                interrupt_count: 0,
+                data: Data::new(),
                 transfer,
-                // button: Button::No,
                 menu: Menu::Main,
                 settings,
                 item_setting: ItemSetting::Item(1),
                 is_clear: true,
-                eeprom,
-                buttons: AllButton::No
+                no_click_timer: None,
+                impulses_raw: ImpulsesRaw::new(),
+                impulses_complete: Some(ImpulsesComplete::new()),
+                adc_buffer: Some(adc_buffer),
             },
             Local {
                 display,
                 led,
-                fan1_rpm,
-                counter_hz,
+                fan1_exti,
+                fan2_exti,
+                fan3_exti,
+                fan4_exti,
+                tim_5,
+                tim_9,
+                tim_11,
                 buffer: adc_dma_buffer,
                 btn_minus_async,
                 btn_ok_async,
                 btn_plus_async,
+                eeprom,
+                adc: AdcMeasure::new(),
+                control: Control::new(tim_4),
             },
         )
     }
 
-    // pub struct MyDisplay<DI: DisplayInterface> {
-    //     inner: mipidsi::Display<SPIInterfaceNoCS<DI, ErasedPin<Output>>, ST7735s, ErasedPin<Output>>,
-    //     backlight_pin: ErasedPin<Output>,
-    //     fx_params: FXParams,
-    // }
+    // Software task
+    // Починаю робити відлік при відсутності натискань кнопок
+    #[task(shared = [no_click_timer], priority = 2)]
+    async fn no_click_timer(mut cx: no_click_timer::Context) {
+        loop {
+            cx.shared.no_click_timer.lock(|no_click_timer| {
+                if let Some(t) = no_click_timer {
+                    *t = t.saturating_sub(1);
+                }
+            });
 
+            Mono::delay(1000.millis()).await;
+        }
+    }
+
+    // Software task
+    // Завантажує всі налаштування.
+    // Зберігає налаштування при відсутності натискань кнопок за певний період при умові зміни будь якого параметру
+    #[task(local = [eeprom], shared = [no_click_timer, settings, menu, is_clear, item_setting], priority = 2)]
+    async fn save(mut cx: save::Context) {
+        // let mut s = cx.shared.settings.lock(move |settings| settings.clone());
+        // cx.local.eeprom.default_settings(&mut s).await;
+        // cx.shared.settings.lock(|settings| {
+        //     *settings = s;
+        //     info!("default")
+        // });
+
+        let mut s = cx.shared.settings.lock(move |settings| settings.clone());
+        cx.local.eeprom.load_settings(&mut s).await;
+        cx.shared.settings.lock(|settings| {
+            *settings = s;
+        });
+
+        loop {
+            let s = (
+                &mut cx.shared.no_click_timer, 
+                &mut cx.shared.menu, 
+                &mut cx.shared.is_clear, 
+                &mut cx.shared.item_setting
+            )
+            .lock(|no_click_timer, menu, is_clear, item_setting| {
+                if let Some(t) = no_click_timer {
+                    if *t == 0 {
+                        *no_click_timer = None;
+                        *menu = Menu::Main;
+                        *is_clear = true;
+                        *item_setting = ItemSetting::Item(1);
+                        return Some(cx.shared.settings.lock(|settings| settings.clone()));
+                    }
+                }
+                None
+            });
+
+            if let Some(mut s) = s {
+                cx.local.eeprom.save_all(&mut s).await;
+                info!("SAVE");
+            }
+
+            Mono::delay(1000.millis()).await;
+        }
+    }
+
+    // Software task
+    // Для відображення даних на дисплеї
     #[task(local = [display, draw_static: bool = true], shared = [menu, data, settings, item_setting, is_clear], priority = 1)]
     async fn display_menu_task(cx: display_menu_task::Context) {
         // let display = unsafe { cx.shared.display.lock(|d| &mut *d.get()) };
@@ -386,456 +391,249 @@ mod app {
         screen.draw_init(display);
 
         loop {
-            (
-                &mut shared.menu,
-                &mut shared.is_clear,
-            )
-                .lock(|menu, is_clear| {
-                    match menu {
-                        Menu::Main => {
-                            *cx.local.draw_static = true;
-                            let data = shared.data.lock(|data| {
-                                core::mem::replace(data, Data::new())
-                            });
+            (&mut shared.menu, &mut shared.is_clear).lock(|menu, is_clear| {
+                match menu {
+                    Menu::Main => {
+                        *cx.local.draw_static = true;
+                        // let data = shared.data.lock(|data| core::mem::replace(data, Data::new()));
 
-                            screen = Screens::Main(MainScreen::new(data, *is_clear));
-                        }
-                        Menu::Fan(fan) => {
-                            *cx.local.draw_static = true;
-                            (&mut shared.settings, &mut shared.item_setting).lock(|settings, item_setting| {
-                                screen = Screens::Setting(SettingScreen::new(
-                                    settings.fans[*fan - 1].clone(),
-                                    *fan,
-                                    item_setting.clone(),
-                                    *is_clear
-                                ));
-                            });
-                        }
+                        shared.data.lock(|data| {
+                            screen = Screens::Main(MainScreen::new(data.clone(), *is_clear));
+                        });
                     }
-                    *is_clear = false;
-                });
-            // if *cx.local.draw_static {
-            //     *cx.local.draw_static = false;
-              
-            //     info!("draw_static");
-            // }
+                    Menu::Fan(fan) => {
+                        *cx.local.draw_static = true;
+                        (&mut shared.settings, &mut shared.item_setting).lock(|settings, item_setting| {
+                            screen = Screens::Setting(SettingScreen::new(
+                                settings.fans[*fan - 1].clone(),
+                                *fan,
+                                item_setting.clone(),
+                                *is_clear,
+                            ));
+                        });
+                    }
+                }
+                *is_clear = false;
+            });
             screen.draw_static(display);
             screen.draw_init(display);
             Mono::delay(50.millis()).await;
         }
     }
 
-    #[task(shared = [buttons, eeprom, settings, item_setting, menu, is_clear], priority = 2)]
-    async fn button_menu_task(mut cx: button_menu_task::Context) {
-
-        loop {
-            (
-                &mut cx.shared.buttons, 
-                &mut cx.shared.is_clear, 
-                &mut cx.shared.menu, 
-                &mut cx.shared.item_setting,
-                &mut cx.shared.settings
-            )
-            .lock(|buttons, is_clear, menu, item_setting, settings| {
-                match buttons {
-                    AllButton::No => {},
-                    AllButton::Minus(minus) => {
-                        match minus {
-                            ButtonState::ShortPress => {
-                                match menu {
-                                Menu::Fan(fan) => match item_setting {
-                                        ItemSetting::Item(item) => {
-                                            settings.fans[*fan - 1].items[*item - 1].0 -= 1;
-                                        }
-                                    },
-                                    Menu::Main => {}
-                                }
-                                
-                            },
-                            ButtonState::LongPress => {},
-                            ButtonState::LongPressDuration(_) => {
-                                match menu {
-                                    Menu::Fan(fan) => match item_setting {
-                                        ItemSetting::Item(item) => {
-                                            let setting =
-                                                &mut settings.fans[*fan - 1].items[*item - 1].0;
-                                            if *setting > 1 {
-                                                *setting -= 1;
-                                            }
-                                        }
-                                    },
-                                    Menu::Main => {}
-                                }
-                            },
-                        }
-                    }
-                    AllButton::Ok(ok) => {
-                        match ok {
-                            ButtonState::ShortPress => {
-                                match item_setting {
-                                    ItemSetting::Item(item) => {
-                                        *item += 1;
-                                        if *item > 8 {
-                                            *item = 1;
-                                        }
-                                        *item_setting = ItemSetting::Item(*item)
-                                }
-                                }
-                            }
-                            ButtonState::LongPress => {
-                                *is_clear = true;
-                            
-                                match menu {
-                                    Menu::Main => *menu = Menu::Fan(1),
-                                    Menu::Fan(fan) => {
-                                        *item_setting = ItemSetting::Item(1);
-                                        let prev_fan = *fan;
-                                        if *fan < 4 {
-                                            *fan += 1;
-                                            *menu = Menu::Fan(*fan)
-                                        } else {
-                                            *fan = 1;
-                                            *menu = Menu::Main
-                                        }
-                                    }
-                                }
-                            }
-                            ButtonState::LongPressDuration(_) => {
-                               
-                            },
-                        }
-                    }
-                    AllButton::Plus(plus) => {
-                        match plus {
-                            ButtonState::ShortPress => {
-                                match menu {
-                                    Menu::Fan(fan) => match item_setting {
-                                        ItemSetting::Item(item) => {
-                                            settings.fans[*fan - 1].items[*item - 1].0 += 1;
-                                        }
-                                    },
-                                    Menu::Main => {}
-                                }
-                            },
-                            ButtonState::LongPress => {},
-                            ButtonState::LongPressDuration(_) => {
-                                match menu {
-                                    Menu::Fan(fan) => match item_setting {
-                                        ItemSetting::Item(item) => {
-                                            let setting =
-                                                &mut settings.fans[*fan - 1].items[*item - 1].0;
-    
-                                            if *setting < 99 {
-                                                *setting += 1;
-                                            }
-                                        }
-                                    },
-                                    Menu::Main => {}
-                                }
-                            },
-                        }
-                    }
-                }
-                *buttons = AllButton::No;
-            });
-            
-            Mono::delay(10.millis()).await;
-        }
-    }
-
-    #[task(local = [btn_minus_async, btn_plus_async, btn_ok_async], shared = [buttons, eeprom, settings, item_setting, menu, is_clear], priority = 2)]
+    // Software task
+    // Обробник натисання кнопок і зміна параметрів налаштувань
+    #[task(local = [btn_minus_async, btn_plus_async, btn_ok_async], shared = [no_click_timer, settings, item_setting, menu, is_clear], priority = 2)]
     async fn button_task(mut cx: button_task::Context) {
-        let button_task::SharedResources {
-            eeprom,
-            mut settings,
-            mut buttons,
-            mut item_setting,
-            mut menu,
-            mut is_clear,
-            __rtic_internal_marker,
-        } = cx.shared;
-
         // Button configuration
-        let button_config = ButtonConfig::new(
-            MyDuration::millis(20),
-            MyDuration::millis(1),
-            MyDuration::millis(500),
-            ButtonMode::PullUp,
-            100,
-        );
+        let button_config =
+            ButtonConfig::new(MyDuration::millis(20), MyDuration::millis(1), MyDuration::millis(500), ButtonMode::PullUp, 100);
 
         let mut btn_minus = Button::new(cx.local.btn_minus_async, button_config);
         let mut btn_plus = Button::new(cx.local.btn_plus_async, button_config);
         let mut btn_ok = Button::new(cx.local.btn_ok_async, button_config);
 
         loop {
-            match select3(btn_minus.update(), btn_ok.update(), btn_plus.update()).await {
-                Either3::First(minus) => {
-                    buttons.lock(|buttons| {
-                        match minus {
-                            ButtonEvent::ShortPress(_) => *buttons = AllButton::Minus(ButtonState::ShortPress),
-                            ButtonEvent::LongPress => *buttons = AllButton::Minus(ButtonState::LongPress),
-                            ButtonEvent::LongPressDuration(d) => *buttons = AllButton::Minus(ButtonState::LongPressDuration(d)),
-                            ButtonEvent::Released => {}
+            let select = select3(btn_minus.update(), btn_ok.update(), btn_plus.update()).await;
+
+            cx.shared.no_click_timer.lock(|no_click_timer| *no_click_timer = Some(10));
+
+            (&mut cx.shared.is_clear, &mut cx.shared.menu, &mut cx.shared.item_setting, &mut cx.shared.settings).lock(
+                |is_clear, menu, item_setting, settings: &mut Settings| match select {
+                    Either3::First(minus) => match minus {
+                        ButtonEvent::ShortPress(_) => match menu {
+                            Menu::Fan(fan) => match item_setting {
+                                ItemSetting::Item(item) => {
+                                    let (prev_settings, _, setting) = settings.get_mut(fan, item);
+                                    if *item <= 2 || *setting > prev_settings + 1 {
+                                        if *setting > 1 {
+                                            *setting -= 1;
+                                        }
+                                    }
+                                }
+                            },
+                            Menu::Main => {}
+                        },
+                        ButtonEvent::LongPress => {}
+                        ButtonEvent::LongPressDuration(_) => match menu {
+                            Menu::Fan(fan) => match item_setting {
+                                ItemSetting::Item(item) => {
+                                    let (prev_settings, _, setting) = settings.get_mut(fan, item);
+                                    if *item <= 2 || *setting > prev_settings + 1 {
+                                        if *setting > 1 {
+                                            *setting -= 1;
+                                        }
+                                    }
+                                }
+                            },
+                            Menu::Main => {}
+                        },
+                    },
+                    Either3::Second(ok) => match ok {
+                        ButtonEvent::ShortPress(_) => {
+                            if let Menu::Fan(_) = menu {
+                                match item_setting {
+                                    ItemSetting::Item(mut item) => {
+                                        item += 1;
+                                        if item > 8 {
+                                            item = 1;
+                                        }
+                                        *item_setting = ItemSetting::Item(item);
+                                    }
+                                }
+                            }
                         }
-                    });
-                }
-                Either3::Second(ok) => {
-                    buttons.lock(|buttons| {
-                        match ok {
-                            ButtonEvent::ShortPress(_) => *buttons = AllButton::Ok(ButtonState::ShortPress),
-                            ButtonEvent::LongPress => *buttons = AllButton::Ok(ButtonState::LongPress),
-                            ButtonEvent::LongPressDuration(d) => *buttons = AllButton::Ok(ButtonState::LongPressDuration(d)),
-                            ButtonEvent::Released => {}
+                        ButtonEvent::LongPress => {
+                            *is_clear = true;
+
+                            match menu {
+                                Menu::Main => *menu = Menu::Fan(1),
+                                Menu::Fan(mut fan) => {
+                                    *item_setting = ItemSetting::Item(1);
+                                    if fan < 4 {
+                                        fan += 1;
+                                        *menu = Menu::Fan(fan);
+                                    } else {
+                                        *menu = Menu::Main;
+                                    }
+                                }
+                            }
                         }
-                    });
-                }
-                Either3::Third(plus) => {
-                    buttons.lock(|buttons| {
-                        match plus {
-                            ButtonEvent::ShortPress(_) => *buttons = AllButton::Plus(ButtonState::ShortPress),
-                            ButtonEvent::LongPress => *buttons = AllButton::Plus(ButtonState::LongPress),
-                            ButtonEvent::LongPressDuration(d) => *buttons = AllButton::Plus(ButtonState::LongPressDuration(d)),
-                            ButtonEvent::Released => {}
-                        }
-                    });
-                }
-            }
-        }
-
-
-        // loop {
-        //     match select3(btn_minus.update(), btn_ok.update(), btn_plus.update()).await {
-        //         Either3::First(minus) => match minus {
-        //             ButtonEvent::ShortPress(_) => {
-        //                 (&mut settings, &mut item_setting, &mut menu).lock(
-        //                     |settings, item_setting, menu| match menu {
-        //                         Menu::Fan(fan) => match item_setting {
-        //                             ItemSetting::Item(item) => {
-        //                                 settings.fans[*fan - 1].items[*item - 1].0 -= 1;
-        //                             }
-        //                         },
-        //                         Menu::Main => {}
-        //                     },
-        //                 );
-        //             }
-        //             ButtonEvent::LongPress => {}
-        //             ButtonEvent::LongPressDuration(_) => {
-        //                 (&mut settings, &mut item_setting, &mut menu).lock(
-        //                     |settings, item_setting, menu| match menu {
-        //                         Menu::Fan(fan) => match item_setting {
-        //                             ItemSetting::Item(item) => {
-        //                                 let setting =
-        //                                     &mut settings.fans[*fan - 1].items[*item - 1].0;
-        //                                 if *setting > 1 {
-        //                                     *setting -= 1;
-        //                                 }
-        //                             }
-        //                         },
-        //                         Menu::Main => {}
-        //                     },
-        //                 );
-        //             }
-        //             ButtonEvent::Released => {}
-        //         },
-        //         Either3::Second(ok) => match ok {
-        //             ButtonEvent::ShortPress(_) => {
-        //                 (item_setting).lock(|item_setting| match item_setting {
-        //                     ItemSetting::Item(item) => {
-        //                         *item += 1;
-        //                         if *item > 8 {
-        //                             *item = 1;
-        //                         }
-        //                         *item_setting = ItemSetting::Item(*item)
-        //                     }
-        //                 });
-        //             }
-        //             ButtonEvent::LongPress => {
-        //                 (&mut is_clear, &mut menu, &mut item_setting).lock(
-        //                     |is_clear, menu, item_setting| {
-        //                         *is_clear = true;
-
-        //                         match menu {
-        //                             Menu::Main => *menu = Menu::Fan(1),
-        //                             Menu::Fan(fan) => {
-        //                                 *item_setting = ItemSetting::Item(1);
-        //                                 if *fan < 4 {
-        //                                     *fan += 1;
-        //                                     *menu = Menu::Fan(*fan)
-        //                                 } else {
-        //                                     *fan = 1;
-        //                                     *menu = Menu::Main
-        //                                 }
-        //                             }
-        //                         }
-        //                     },
-        //                 );
-        //             }
-        //             ButtonEvent::LongPressDuration(_) => {}
-        //             ButtonEvent::Released => {}
-        //         },
-        //         Either3::Third(plus) => match plus {
-        //             ButtonEvent::ShortPress(_) => {
-        //                 (&mut settings, &mut item_setting, &mut menu).lock(
-        //                     |settings, item_setting, menu| match menu {
-        //                         Menu::Fan(fan) => match item_setting {
-        //                             ItemSetting::Item(item) => {
-        //                                 settings.fans[*fan - 1].items[*item - 1].0 += 1;
-        //                             }
-        //                         },
-        //                         Menu::Main => {}
-        //                     },
-        //                 );
-        //             }
-        //             ButtonEvent::LongPress => {}
-        //             ButtonEvent::LongPressDuration(_) => {
-        //                 (&mut settings, &mut item_setting, &mut menu).lock(
-        //                     |settings, item_setting, menu| match menu {
-        //                         Menu::Fan(fan) => match item_setting {
-        //                             ItemSetting::Item(item) => {
-        //                                 let setting =
-        //                                     &mut settings.fans[*fan - 1].items[*item - 1].0;
-
-        //                                 if *setting < 99 {
-        //                                     *setting += 1;
-        //                                 }
-        //                             }
-        //                         },
-        //                         Menu::Main => {}
-        //                     },
-        //                 );
-        //             }
-        //             ButtonEvent::Released => {}
-        //         },
-        //     }
-        // }
-    }
-
-   
-
-    #[task(priority = 2)]
-    async fn time_task(_ctx: time_task::Context) {
-        loop {
-            cortex_m::interrupt::free(|_| unsafe { GLOBAL_TIMER_COUNTER += TIMER_PERIOD });
-            Mono::delay(1.millis()).await;
+                        ButtonEvent::LongPressDuration(_) => {}
+                    },
+                    Either3::Third(plus) => match plus {
+                        ButtonEvent::ShortPress(_) => match menu {
+                            Menu::Fan(fan) => match item_setting {
+                                ItemSetting::Item(item) => {
+                                    let (_, last_settings, setting) = settings.get_mut(fan, item);
+                                    if *item >= 6 || *setting < last_settings - 1 {
+                                        if *setting < 99 {
+                                            *setting += 1;
+                                        }
+                                    }
+                                }
+                            },
+                            Menu::Main => {}
+                        },
+                        ButtonEvent::LongPress => {}
+                        ButtonEvent::LongPressDuration(_) => match menu {
+                            Menu::Fan(fan) => match item_setting {
+                                ItemSetting::Item(item) => {
+                                    let (_, last_settings, setting) = settings.get_mut(fan, item);
+                                    if *item >= 6 || *setting < last_settings - 1 {
+                                        if *setting < 99 {
+                                            *setting += 1;
+                                        }
+                                    }
+                                }
+                            },
+                            Menu::Main => {}
+                        },
+                    },
+                },
+            );
         }
     }
 
-    #[task(shared = [data], local = [t: u16 = 20], priority = 2)]
-    async fn test_task_temp(_ctx: test_task_temp::Context) {}
-
-    #[task(shared = [data], local = [r: u16 = 1100], priority = 2)]
-    async fn test_task_rpm(mut cx: test_task_rpm::Context) {
-        loop {
-            *cx.local.r -= 1;
-
-            if *cx.local.r == 0 {
-                *cx.local.r = 1100;
-            }
-
-            if *cx.local.r == 950 {
-                *cx.local.r = 120;
-            }
-
-            cx.shared.data.lock(|data| {
-                data[0].rpm = *cx.local.r;
-            });
-
-            Mono::delay(40.millis()).await;
+    // Hardware task
+    // TIM5. Для відправки виміряних даних на дисплей (температура і оберти).
+    // І управління логікою на основі виміряних даних
+    #[task(binds = TIM5, local = [tim_5, adc, control], shared = [adc_buffer, impulses_complete, data, settings], priority = 3)]
+    fn tim_5(mut cx: tim_5::Context) {
+        if cx.local.tim_5.flags().contains(Flag::Update) {
+            cx.local.tim_5.clear_flags(Flag::Update);
         }
+
+        let adc_buffer = cx.shared.adc_buffer.lock(|adc_buffer| adc_buffer.take());
+        if let Some(buffer) = &adc_buffer {
+            let adc_values: &Vec<u16, 4> = cx.local.adc.split_channels(buffer).average();
+            cx.shared.data.lock(|data| data.set_temp(adc_values));
+        }
+
+        if let Some(imp) = &cx.shared.impulses_complete {
+            cx.shared.data.lock(|data| data.set_rpm(imp));
+        }
+
+        (cx.shared.data, cx.shared.settings).lock(|data, settings| {
+            let temp = data.get_temp();
+            cx.local.control.run(temp, settings);
+        });
     }
 
-    #[task(binds = TIM1_TRG_COM_TIM11, local = [counter_hz, a: u32 = 0], shared = [transfer, frequency, interrupt_count], priority = 3)]
-    fn timer_rpm_task(mut cx: timer_rpm_task::Context) {
-        if cx.local.counter_hz.flags().contains(Flag::Update) {
-            cx.local.counter_hz.clear_flags(Flag::Update)
+    // Hardware task
+    // TIM9. Для вимірювання частоти вентиляторів.
+    #[task(binds = TIM1_BRK_TIM9, local = [tim_9], shared = [impulses_raw, impulses_complete], priority = 3)]
+    fn tim_9(mut cx: tim_9::Context) {
+        if cx.local.tim_9.flags().contains(Flag::Update) {
+            cx.local.tim_9.clear_flags(Flag::Update);
+        }
+
+        cx.shared.impulses_raw.lock(|impulses_raw| {
+            for (ind, fan) in impulses_raw.iter_mut().enumerate() {
+                cx.shared.impulses_complete.set(ind, fan);
+                *fan = 0;
+            }
+        });
+    }
+
+    // Hardware task
+    // TIM11. Для запуску АЦП
+    #[task(binds = TIM1_TRG_COM_TIM11, local = [tim_11], shared = [transfer], priority = 3)]
+    fn tim_11(mut cx: tim_11::Context) {
+        if cx.local.tim_11.flags().contains(Flag::Update) {
+            cx.local.tim_11.clear_flags(Flag::Update);
         }
 
         cx.shared.transfer.lock(|transfer| {
-            // transfer.start(|adc| {
-            //     adc.start_conversion();
-            //     // info!("conversion");
-            // });
+            transfer.start(|adc| adc.start_conversion());
+        });
+    }
+
+    // Hardware task
+    // Частоти вентилятора 1. Викликається при надходженні сигналу на pin
+    #[task(binds = EXTI15_10, local = [fan1_exti, fan2_exti, fan3_exti, fan4_exti], shared = [impulses_raw], priority = 4)]
+    fn exti_15(mut cx: exti_15::Context) {
+        cx.shared.impulses_raw.lock(|impulses_raw| {
+            if cx.local.fan1_exti.check_interrupt() {
+                impulses_raw.add_raw(0);
+                cx.local.fan1_exti.clear_interrupt_pending_bit();
+            }
+            if cx.local.fan2_exti.check_interrupt() {
+                impulses_raw.add_raw(1);
+                cx.local.fan2_exti.clear_interrupt_pending_bit();
+            }
+            if cx.local.fan3_exti.check_interrupt() {
+                impulses_raw.add_raw(2);
+                cx.local.fan3_exti.clear_interrupt_pending_bit();
+            }
+            if cx.local.fan4_exti.check_interrupt() {
+                impulses_raw.add_raw(3);
+                cx.local.fan4_exti.clear_interrupt_pending_bit();
+            }
+        });
+    }
+
+    // Hardware task
+    // DMA. Викликається коли дані готові
+    #[task(binds = DMA2_STREAM0, shared = [transfer, adc_buffer], local = [buffer, a: u32 = 0], priority = 5)]
+    fn dma(mut cx: dma::Context) {
+        let buffer = cx.shared.transfer.lock(|transfer| {
+            let (buffer, _) = transfer.next_transfer(cx.local.buffer.take().unwrap()).unwrap();
+
+            buffer
         });
 
-        // *cx.local.a += 1;
-
-        // if *cx.local.a % 100_000 == 0 {
-        //     info!("LOCAL: {}", *cx.local.a);
-        // }
-
-        // let count = *cx.shared.interrupt_count;
-        // *cx.shared.interrupt_count = 0;
-
-        // cx.shared.frequency.lock(|frequency| {
-        //     *frequency = count;
-        //     // info!("{}", *frequency);
-        // });
-
-        // let count = cx.shared.interrupt_count.lock(|interrupt_count| {
-        //     cx.shared.frequency.lock(|frequency| {
-        //         *frequency = *interrupt_count;
-        //         info!("{}", *frequency);
-        //     });
-        //     *interrupt_count = 0;
-
-        // });
-    }
-
-    #[task(binds = EXTI15_10, local = [fan1_rpm], shared = [frequency, interrupt_count], priority = 3)]
-    fn fan1_rpm_task(cx: fan1_rpm_task::Context) {
-        *cx.shared.interrupt_count += 1;
-
-        cx.local.fan1_rpm.clear_interrupt_pending_bit();
-    }
-
-    #[task(shared = [transfer], priority = 2)]
-    async fn adc_start_task(mut cx: adc_start_task::Context) {
-        loop {
-            // cx.shared.transfer.lock(|transfer| {
-            //     transfer.start(|adc| {
-            //         adc.start_conversion();
-            //     });
-            // });
-            Mono::delay(500.millis()).await;
+        if *cx.local.a % 10 == 0 {
+            // info!("adc_buffer: {}", buffer[0..16]);
         }
-    }
 
-    #[task(binds = DMA2_STREAM0, shared = [transfer, data], local = [buffer, a: u32 = 0], priority = 3)]
-    fn dma(cx: dma::Context) {
-        let mut shared = cx.shared;
-        let local = cx.local;
-
-        let (buffer, sample_to_millivolts) = shared.transfer.lock(|transfer| {
-            let (buffer, _) = transfer
-                .next_transfer(local.buffer.take().unwrap())
-                .unwrap();
-
-            let sample_to_millivolts = transfer.peripheral().make_sample_to_millivolts();
-
-            (buffer, sample_to_millivolts)
+        cx.shared.adc_buffer.lock(|adc_buffer| {
+            *adc_buffer = Some(*buffer);
         });
 
-        let fan1_raw_adc = buffer[0];
-        let fan2_raw_adc = buffer[1];
+        *cx.local.buffer = Some(buffer);
 
-        *local.buffer = Some(buffer);
-
-        let voltage_fan1 = sample_to_millivolts(fan1_raw_adc);
-        let voltage_fan2 = sample_to_millivolts(fan2_raw_adc);
-
-        *local.a += 1;
-
-        shared.data.lock(|data| {
-            data[1].rpm = voltage_fan1;
-        });
-
-        if *local.a % 4_000 == 0 {
-            info!("LOCAL: {}", *local.a);
-            info!("fan1: {}, fan2: {}", voltage_fan1, voltage_fan2);
-        }
-        // info!("fan1: {}, fan2: {}", voltage_fan1, voltage_fan2);
-      
+        *cx.local.a += 1;
     }
 
     #[idle(local = [led])]

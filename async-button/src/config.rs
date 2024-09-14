@@ -20,13 +20,8 @@ pub struct ButtonConfig {
 
 impl ButtonConfig {
     /// Returns a new [ButtonConfig].
-    pub fn new(
-        debounce: MyDuration,
-        double_click: MyDuration,
-        long_press: MyDuration,
-        mode: ButtonMode,
-        hold_duration_delay: u32,
-    ) -> Self {
+    #[must_use]
+    pub fn new(debounce: MyDuration, double_click: MyDuration, long_press: MyDuration, mode: ButtonMode, hold_duration_delay: u32) -> Self {
         Self {
             debounce,
             double_click,
@@ -61,11 +56,13 @@ pub enum ButtonMode {
 
 impl ButtonMode {
     /// Is button connected to a pin with a pull-up resistor?
+    #[must_use]
     pub const fn is_pullup(&self) -> bool {
         matches!(self, ButtonMode::PullUp)
     }
 
     /// Is button connected to a pin with a pull-down resistor?
+    #[must_use]
     pub const fn is_pulldown(&self) -> bool {
         !self.is_pullup()
     }

@@ -9,7 +9,8 @@ test = false
 bench = false
 
 [dependencies]
+monotonic = { path = "../monotonic" }
 stm32f4xx-hal.workspace = true
 eeprom24x.workspace = true
 heapless.workspace = true
-embedded-hal.workspace = true
+defmt.workspace = true
