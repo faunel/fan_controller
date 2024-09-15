@@ -14,6 +14,7 @@ use embedded_graphics::{
 };
 use heapless::String;
 use measurements::measure::Data;
+use monotonic::prelude::*;
 use u8g2_fonts::{
     fonts,
     types::{FontColor, VerticalPosition},
@@ -29,8 +30,8 @@ pub struct MainScreen<DT, E> {
 }
 
 impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for MainScreen<DT, E> {
-    fn draw_init(&mut self, display: &mut DT) {
-        self.draw(display);
+    async fn draw_init(&mut self, display: &mut DT) {
+        self.draw(display).await;
     }
 
     fn draw_static(&mut self, display: &mut DT) {
@@ -102,7 +103,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         font.render("RPM", Point::new(108, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display).unwrap();
     }
 
-    pub fn draw(&self, display: &mut DT) {
+    pub async fn draw(&self, display: &mut DT) {
         let mut style_segment = SevenSegmentStyleBuilder::new()
             .digit_size(Size::new(15, 25)) // digits are 10x20 pixels
             .digit_spacing(2) // 5px spacing between digits
@@ -115,6 +116,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // Рядок перший. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
         Text::new("1", Point::new(8, 39), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок перший. Температура
         style_segment.segment_color = Some(Rgb565::RED);
@@ -122,6 +124,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[0].temp).unwrap();
         write!(text, "{:02}", self.data.temp[0]).unwrap();
         Text::new(&text, Point::new(43, 39), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок перший. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
@@ -129,10 +132,12 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[0].rpm).unwrap();
         write!(text, "{:04}", self.data.rpm[0]).unwrap();
         Text::new(&text, Point::new(90, 39), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок другий. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
         Text::new("2", Point::new(8, 67), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок другий. Температура
         style_segment.segment_color = Some(Rgb565::RED);
@@ -140,6 +145,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[1].temp).unwrap();
         write!(text, "{:02}", self.data.temp[1]).unwrap();
         Text::new(&text, Point::new(43, 67), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок другий. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
@@ -147,10 +153,12 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[1].rpm).unwrap();
         write!(text, "{:04}", self.data.rpm[1]).unwrap();
         Text::new(&text, Point::new(90, 67), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок третій. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
         Text::new("3", Point::new(8, 95), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок третій. Температура
         style_segment.segment_color = Some(Rgb565::RED);
@@ -158,6 +166,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[2].temp).unwrap();
         write!(text, "{:02}", self.data.temp[2]).unwrap();
         Text::new(&text, Point::new(43, 95), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок третій. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
@@ -165,10 +174,12 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[2].rpm).unwrap();
         write!(text, "{:04}", self.data.rpm[2]).unwrap();
         Text::new(&text, Point::new(90, 95), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок четвертий. Номер
         style_segment.segment_color = Some(Rgb565::WHITE);
         Text::new("4", Point::new(8, 124), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок четвертий. Температура
         style_segment.segment_color = Some(Rgb565::RED);
@@ -176,6 +187,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[3].temp).unwrap();
         write!(text, "{:02}", self.data.temp[3]).unwrap();
         Text::new(&text, Point::new(43, 124), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
 
         // Рядок четвертий. Оберти
         style_segment.segment_color = Some(Rgb565::BLUE);
@@ -183,5 +195,6 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         // uwrite!(&mut text, "{}", data[3].rpm).unwrap();
         write!(text, "{:04}", self.data.rpm[3]).unwrap();
         Text::new(&text, Point::new(90, 124), style_segment).draw(display).unwrap();
+        Mono::delay(4.millis()).await;
     }
 }

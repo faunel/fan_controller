@@ -10,6 +10,7 @@ use embedded_graphics::{
     Drawable,
 };
 use heapless::String;
+use monotonic::prelude::*;
 use u8g2_fonts::{
     fonts,
     types::{FontColor, VerticalPosition},
@@ -39,8 +40,8 @@ pub struct SettingScreen<DT, E> {
 }
 
 impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for SettingScreen<DT, E> {
-    fn draw_init(&mut self, display: &mut DT) {
-        self.draw(display);
+    async fn draw_init(&mut self, display: &mut DT) {
+        self.draw(display).await;
     }
 
     fn draw_static(&mut self, display: &mut DT) {
@@ -117,7 +118,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
         font.render("PWM", Point::new(106, 13), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display).unwrap();
     }
 
-    pub fn draw(&self, display: &mut DT) {
+    pub async fn draw(&self, display: &mut DT) {
         let mut style_segment = SevenSegmentStyleBuilder::new()
             .digit_size(Size::new(14, 22)) // digits are 10x20 pixels
             .digit_spacing(2) // 5px spacing between digits
@@ -153,47 +154,55 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[0].temp.data).unwrap();
         Text::new(&text, Point::new(26, 49), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
 
         // Рядок перший. ШІМ
         style_segment.segment_color = fan1_pwm_segment_color;
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[0].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 49), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
 
         // Рядок другий. Температура
         style_segment.segment_color = fan2_temp_segment_color;
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[1].temp.data).unwrap();
         Text::new(&text, Point::new(26, 74), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
 
         // Рядок другий. ШІМ
         style_segment.segment_color = fan2_pwm_segment_color;
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[1].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 74), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
 
         // Рядок третій. Температура
         style_segment.segment_color = fan3_temp_segment_color;
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[2].temp.data).unwrap();
         Text::new(&text, Point::new(26, 99), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
 
         // Рядок третій. ШІМ
         style_segment.segment_color = fan3_pwm_segment_color;
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[2].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 99), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
 
         // Рядок четвертий. Температура
         style_segment.segment_color = fan4_temp_segment_color;
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[3].temp.data).unwrap();
         Text::new(&text, Point::new(26, 124), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
 
         // Рядок четвертий. ШІМ
         style_segment.segment_color = fan4_pwm_segment_color;
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[3].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 124), style_segment).draw(display).unwrap();
+        Mono::delay(5.millis()).await;
     }
 }

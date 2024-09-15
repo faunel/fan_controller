@@ -5,13 +5,12 @@
 #[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, dispatchers = [SPI3, SPI4])]
 mod app {
     use async_button::prelude::*;
-    use cortex_m::interrupt::Mutex;
     use defmt::info;
     use display_interface_spi::SPIInterface;
     use eeprom::eeprom::{Settings, EEPROM};
     use embassy_futures::select::{select3, Either3};
     use embedded_hal_bus::spi::ExclusiveDevice;
-    use heapless::{pool::arc::{Arc, ArcBlock}, Vec};
+    use heapless::Vec;
     use measurements::{
         control::Control,
         measure::{AdcMeasure, Data, ImpulsesComplete, ImpulsesRaw, SetImpulsesComplete},
@@ -43,9 +42,9 @@ mod app {
     use ui::Display;
     use ui::{
         main::MainScreen,
-        Menu,
         screens::{start::StartScreen, Screen, Screens},
         setting::SettingScreen,
+        Menu,
     };
     use {defmt_rtt as _, panic_probe as _};
 
@@ -101,6 +100,12 @@ mod app {
         // let mut delay = cp.SYST.delay(&clocks);
         let mut delay = dp.TIM10.delay_us(&clocks);
 
+        // cp.DCB.enable_trace();
+        // cp.DWT.enable_cycle_counter();
+
+        // let start = DWT::cycle_count();
+        // info!("{}", DWT::cycle_count() - start);
+ 
         // Monotonic timer
         Mono::start(cp.SYST, clocks.sysclk().to_Hz());
 
@@ -240,7 +245,6 @@ mod app {
 
         //---------------------------------------------------
 
-
         // SPI1 mode configuration
         let mode = Mode {
             polarity: Polarity::IdleLow,
@@ -272,16 +276,9 @@ mod app {
         let eeprom = EEPROM::new(i2c);
 
         // Tasks
-        no_click_timer::spawn().unwrap();
         save::spawn().unwrap();
         button_task::spawn().unwrap();
         display_menu_task::spawn().unwrap();
-        // test_task_rpm::spawn().unwrap();
-        // button_menu_task::spawn().unwrap();
-        // button_ok_task::spawn().unwrap();
-        // button_plus_task::spawn().unwrap();
-        // time_task::spawn().unwrap();
-        // test_task_temp::spawn().unwrap();
 
         (
             Shared {
@@ -351,24 +348,26 @@ mod app {
         });
 
         loop {
-            let s = (
-                &mut cx.shared.no_click_timer, 
-                &mut cx.shared.menu, 
-                &mut cx.shared.is_clear, 
-                &mut cx.shared.item_setting
-            )
-            .lock(|no_click_timer, menu, is_clear, item_setting| {
+            cx.shared.no_click_timer.lock(|no_click_timer| {
                 if let Some(t) = no_click_timer {
-                    if *t == 0 {
-                        *no_click_timer = None;
-                        *menu = Menu::Main;
-                        *is_clear = true;
-                        *item_setting = ItemSetting::Item(1);
-                        return Some(cx.shared.settings.lock(|settings| settings.clone()));
-                    }
+                    *t = t.saturating_sub(1);
                 }
-                None
             });
+
+            let s = (&mut cx.shared.no_click_timer, &mut cx.shared.menu, &mut cx.shared.is_clear, &mut cx.shared.item_setting).lock(
+                |no_click_timer, menu, is_clear, item_setting| {
+                    if let Some(t) = no_click_timer {
+                        if *t == 0 {
+                            *no_click_timer = None;
+                            *menu = Menu::Main;
+                            *is_clear = true;
+                            *item_setting = ItemSetting::Item(1);
+                            return Some(cx.shared.settings.lock(|settings| settings.clone()));
+                        }
+                    }
+                    None
+                },
+            );
 
             if let Some(mut s) = s {
                 cx.local.eeprom.save_all(&mut s).await;
@@ -388,7 +387,7 @@ mod app {
         let mut shared = cx.shared;
 
         let mut screen: Screens<Display, DisplayError> = StartScreen::default().into();
-        screen.draw_init(display);
+        screen.draw_init(display).await;
 
         loop {
             (&mut shared.menu, &mut shared.is_clear).lock(|menu, is_clear| {
@@ -416,8 +415,8 @@ mod app {
                 *is_clear = false;
             });
             screen.draw_static(display);
-            screen.draw_init(display);
-            Mono::delay(50.millis()).await;
+            screen.draw_init(display).await;
+            // Mono::delay(50.millis()).await;
         }
     }
 
@@ -427,7 +426,7 @@ mod app {
     async fn button_task(mut cx: button_task::Context) {
         // Button configuration
         let button_config =
-            ButtonConfig::new(MyDuration::millis(20), MyDuration::millis(1), MyDuration::millis(500), ButtonMode::PullUp, 100);
+            ButtonConfig::new(MyDuration::millis(20), MyDuration::millis(1), MyDuration::millis(500), ButtonMode::PullUp, 80);
 
         let mut btn_minus = Button::new(cx.local.btn_minus_async, button_config);
         let mut btn_plus = Button::new(cx.local.btn_plus_async, button_config);
@@ -443,28 +442,14 @@ mod app {
                     Either3::First(minus) => match minus {
                         ButtonEvent::ShortPress(_) => match menu {
                             Menu::Fan(fan) => match item_setting {
-                                ItemSetting::Item(item) => {
-                                    let (prev_settings, _, setting) = settings.get_mut(fan, item);
-                                    if *item <= 2 || *setting > prev_settings + 1 {
-                                        if *setting > 1 {
-                                            *setting -= 1;
-                                        }
-                                    }
-                                }
+                                ItemSetting::Item(item) => settings.decrement_logic(fan, item),
                             },
                             Menu::Main => {}
                         },
                         ButtonEvent::LongPress => {}
                         ButtonEvent::LongPressDuration(_) => match menu {
                             Menu::Fan(fan) => match item_setting {
-                                ItemSetting::Item(item) => {
-                                    let (prev_settings, _, setting) = settings.get_mut(fan, item);
-                                    if *item <= 2 || *setting > prev_settings + 1 {
-                                        if *setting > 1 {
-                                            *setting -= 1;
-                                        }
-                                    }
-                                }
+                                ItemSetting::Item(item) => settings.decrement_logic(fan, item),
                             },
                             Menu::Main => {}
                         },
@@ -504,28 +489,15 @@ mod app {
                     Either3::Third(plus) => match plus {
                         ButtonEvent::ShortPress(_) => match menu {
                             Menu::Fan(fan) => match item_setting {
-                                ItemSetting::Item(item) => {
-                                    let (_, last_settings, setting) = settings.get_mut(fan, item);
-                                    if *item >= 6 || *setting < last_settings - 1 {
-                                        if *setting < 99 {
-                                            *setting += 1;
-                                        }
-                                    }
-                                }
+                                ItemSetting::Item(item) => settings.increment_logic(fan, item),
                             },
                             Menu::Main => {}
                         },
                         ButtonEvent::LongPress => {}
                         ButtonEvent::LongPressDuration(_) => match menu {
                             Menu::Fan(fan) => match item_setting {
-                                ItemSetting::Item(item) => {
-                                    let (_, last_settings, setting) = settings.get_mut(fan, item);
-                                    if *item >= 6 || *setting < last_settings - 1 {
-                                        if *setting < 99 {
-                                            *setting += 1;
-                                        }
-                                    }
-                                }
+                                ItemSetting::Item(item) => settings.increment_logic(fan, item),
+                                
                             },
                             Menu::Main => {}
                         },

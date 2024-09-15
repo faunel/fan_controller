@@ -13,6 +13,7 @@ name = "ui"
 [dependencies]
 measurements = { path = "../measurements"}
 eeprom = { path = "../eeprom"}
+monotonic = { path = "../monotonic"}
 
 embedded-graphics.workspace = true
 heapless.workspace = true

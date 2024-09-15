@@ -8,7 +8,7 @@ pub struct StartScreen<DT, E> {
 }
 
 impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for StartScreen<DT, E> {
-    fn draw_init(&mut self, display: &mut DT) {
+    async fn draw_init(&mut self, display: &mut DT) {
         display.clear(BACKGROUND_COLOR).unwrap();
     }
 

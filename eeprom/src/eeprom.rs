@@ -31,9 +31,13 @@ pub struct Items {
     pub address: u32,
 }
 
-
 pub struct EEPROM {
     eeprom: Eeprom,
+}
+
+enum Modify {
+    Increment,
+    Decrement
 }
 
 #[allow(clippy::new_without_default)]
@@ -47,126 +51,68 @@ impl Settings {
         Settings { fans }
     }
 
-    pub fn get(&mut self, fan: &usize, selector: &usize) -> (u16, u16, &mut u16) {
-        match selector {
-            1 => {
-                (
-                    self.fans[*fan - 1].thresold[0].temp.data,
-                    self.fans[*fan - 1].thresold[0 + 1].temp.data,
-                    &mut self.fans[*fan - 1].thresold[0].temp.data,
-                )
-            },
-            2 => {
-                (
-                    self.fans[*fan - 1].thresold[0].pwm.data,
-                    self.fans[*fan - 1].thresold[0 + 1].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[0].pwm.data,
-                )
-            },
-            3 => {
-                (
-                    self.fans[*fan - 1].thresold[1 - 1].temp.data,
-                    self.fans[*fan - 1].thresold[1 + 1].temp.data,
-                    &mut self.fans[*fan - 1].thresold[1].temp.data,
-                )
-            },
-            4 => {
-                (
-                    self.fans[*fan - 1].thresold[1 - 1].pwm.data,
-                    self.fans[*fan - 1].thresold[1 + 1].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[1].pwm.data,
-                )
-            },
-            5 => {
-                (
-                    self.fans[*fan - 1].thresold[2 - 1].temp.data,
-                    self.fans[*fan - 1].thresold[2 + 1].temp.data,
-                    &mut self.fans[*fan - 1].thresold[2].temp.data,
-                )
-            },
-            6 => {
-                (
-                    self.fans[*fan - 1].thresold[2 - 1].pwm.data,
-                    self.fans[*fan - 1].thresold[2 + 1].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[2].pwm.data,
-                )
-            },
-            7 => {
-                (
-                    self.fans[*fan - 1].thresold[3 - 1].temp.data,
-                    self.fans[*fan - 1].thresold[3].temp.data,
-                    &mut self.fans[*fan - 1].thresold[3].temp.data,
-                )
-            },
-            8 => {
-                (
-                    self.fans[*fan - 1].thresold[3 - 1].pwm.data,
-                    self.fans[*fan - 1].thresold[3].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[3].pwm.data,
-                )
-            },
-            _ => unreachable!(),
+    pub fn increment_logic(&mut self, fan: &usize, selector: &usize) {
+        let current_setting = self.get(fan, selector);
+        let is_temperature = *selector % 2 != 0; 
+        let threshold = if is_temperature { 80 } else { 100 };
+    
+        if *current_setting < threshold {
+            if *selector >= 7 {
+                self.modify(fan, selector, Modify::Increment);
+            } else {
+                let last_setting = self.get(fan, &(*selector + 2));
+                if *current_setting < last_setting - 1 {
+                    self.modify(fan, selector, Modify::Increment);
+                }
+            }
         }
     }
 
-    pub fn get_mut(&mut self, fan: &usize, selector: &usize) -> (u16, u16, &mut u16) {
+
+    pub fn decrement_logic(&mut self, fan: &usize, selector: &usize) {
+        let current_setting = self.get(fan, selector);
+        if *current_setting > 0 {
+            if *selector <= 2 {
+                self.modify(fan, selector, Modify::Decrement);
+            } else {
+                let prev_setting = self.get(fan, &(*selector - 2));
+                if *current_setting > prev_setting + 1 {
+                    self.modify(fan, selector, Modify::Decrement);
+                }
+            }
+        }
+    }
+
+    fn modify(&mut self, fan: &usize, selector: &usize, modify: Modify) {
+        let s = match selector {
+            1 => &mut self.fans[fan - 1].thresold[0].temp.data,
+            2 => &mut self.fans[fan - 1].thresold[0].pwm.data,
+            3 => &mut self.fans[fan - 1].thresold[1].temp.data,
+            4 => &mut self.fans[fan - 1].thresold[1].pwm.data,
+            5 => &mut self.fans[fan - 1].thresold[2].temp.data,
+            6 => &mut self.fans[fan - 1].thresold[2].pwm.data,
+            7 => &mut self.fans[fan - 1].thresold[3].temp.data,
+            8 => &mut self.fans[fan - 1].thresold[3].pwm.data,
+            _ => unreachable!(),
+        };
+
+        match modify {
+            Modify::Increment => *s += 1,
+            Modify::Decrement => *s -= 1,
+        }
+    }
+
+
+    pub fn get(&self, fan: &usize, selector: &usize) -> &u16 {
         match selector {
-            1 => {
-                (
-                    self.fans[*fan - 1].thresold[0].temp.data,
-                    self.fans[*fan - 1].thresold[0 + 1].temp.data,
-                    &mut self.fans[*fan - 1].thresold[0].temp.data,
-                )
-            },
-            2 => {
-                (
-                    self.fans[*fan - 1].thresold[0].pwm.data,
-                    self.fans[*fan - 1].thresold[0 + 1].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[0].pwm.data,
-                )
-            },
-            3 => {
-                (
-                    self.fans[*fan - 1].thresold[1 - 1].temp.data,
-                    self.fans[*fan - 1].thresold[1 + 1].temp.data,
-                    &mut self.fans[*fan - 1].thresold[1].temp.data,
-                )
-            },
-            4 => {
-                (
-                    self.fans[*fan - 1].thresold[1 - 1].pwm.data,
-                    self.fans[*fan - 1].thresold[1 + 1].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[1].pwm.data,
-                )
-            },
-            5 => {
-                (
-                    self.fans[*fan - 1].thresold[2 - 1].temp.data,
-                    self.fans[*fan - 1].thresold[2 + 1].temp.data,
-                    &mut self.fans[*fan - 1].thresold[2].temp.data,
-                )
-            },
-            6 => {
-                (
-                    self.fans[*fan - 1].thresold[2 - 1].pwm.data,
-                    self.fans[*fan - 1].thresold[2 + 1].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[2].pwm.data,
-                )
-            },
-            7 => {
-                (
-                    self.fans[*fan - 1].thresold[3 - 1].temp.data,
-                    self.fans[*fan - 1].thresold[3].temp.data,
-                    &mut self.fans[*fan - 1].thresold[3].temp.data,
-                )
-            },
-            8 => {
-                (
-                    self.fans[*fan - 1].thresold[3 - 1].pwm.data,
-                    self.fans[*fan - 1].thresold[3].pwm.data,
-                    &mut self.fans[*fan - 1].thresold[3].pwm.data,
-                )
-            },
+            1 => &self.fans[fan - 1].thresold[0].temp.data,
+            2 => &self.fans[fan - 1].thresold[0].pwm.data,
+            3 => &self.fans[fan - 1].thresold[1].temp.data,
+            4 => &self.fans[fan - 1].thresold[1].pwm.data,
+            5 => &self.fans[fan - 1].thresold[2].temp.data,
+            6 => &self.fans[fan - 1].thresold[2].pwm.data,
+            7 => &self.fans[fan - 1].thresold[3].temp.data,
+            8 => &self.fans[fan - 1].thresold[3].pwm.data,
             _ => unreachable!(),
         }
     }

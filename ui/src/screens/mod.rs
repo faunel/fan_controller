@@ -12,7 +12,7 @@ use start::StartScreen;
 #[allow(async_fn_in_trait)]
 #[enum_dispatch(Screens<DT, E>)]
 pub trait Screen<DT: DrawTarget, E: Debug> {
-    fn draw_init(&mut self, display: &mut DT);
+    async fn draw_init(&mut self, display: &mut DT);
     fn draw_static(&mut self, display: &mut DT);
 }
 

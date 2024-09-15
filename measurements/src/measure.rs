@@ -40,7 +40,6 @@ impl ImpulsesComplete {
     }
 }
 
-
 impl AdcMeasure {
     pub fn new() -> Self {
         AdcMeasure::default()
@@ -114,7 +113,6 @@ impl SetImpulsesComplete for Option<ImpulsesComplete> {
     }
 }
 
-
 // Реалізація трейтів Deref та DerefMut
 impl Deref for ImpulsesRaw {
     type Target = Vec<u16, 4>;
@@ -156,7 +154,6 @@ impl Default for ImpulsesComplete {
         ImpulsesComplete((0..4).map(|_| 0).collect())
     }
 }
-
 
 impl Default for AdcMeasure {
     fn default() -> Self {
