@@ -12,7 +12,7 @@ mod app {
     use embedded_hal_bus::spi::ExclusiveDevice;
     use measurements::{
         control::Control,
-        measure::{AdcMeasure, Data, ImpulsesComplete, ImpulsesRaw, SetImpulsesComplete},
+        measure::{AdcMeasure, Data, ImpulsesComplete, ImpulsesRaw},
         ADC_BUFFER,
     };
     use mipidsi::{
@@ -22,7 +22,7 @@ mod app {
         Builder,
     };
     use monotonic::prelude::*;
-    use stm32f4::stm32f401::{ADC1, DMA2, TIM4, TIM5, TIM9};
+    use stm32f4::stm32f401::{ADC1, DMA2, DWT, TIM4, TIM5, TIM9};
     use stm32f4xx_hal::{
         adc::{
             config::{AdcConfig, Clock, Continuous, Dma, Resolution, SampleTime, Scan, Sequence},
@@ -60,7 +60,7 @@ mod app {
         no_click_timer: Option<u8>,
         impulses_raw: ImpulsesRaw,
         #[lock_free]
-        impulses_complete: Option<ImpulsesComplete>,
+        impulses_complete: ImpulsesComplete,
         adc_buffer: Option<[u16; ADC_BUFFER]>,
     }
 
@@ -290,7 +290,7 @@ mod app {
                 is_clear: true,
                 no_click_timer: None,
                 impulses_raw: ImpulsesRaw::new(),
-                impulses_complete: Some(ImpulsesComplete::new()),
+                impulses_complete: ImpulsesComplete::new(),
                 adc_buffer: Some(adc_buffer),
             },
             Local {
@@ -371,7 +371,7 @@ mod app {
 
             if let Some(mut s) = s {
                 cx.local.eeprom.save_all(&mut s).await;
-                info!("SAVE");
+                // info!("SAVE");
             }
 
             Mono::delay(1000.millis()).await;
@@ -522,6 +522,8 @@ mod app {
         }
     }
 
+    // Sowtware task
+    // Управління логікою на основі виміряних даних
     #[task(local = [control], shared = [data, settings], priority = 2)]
     async fn set_pwm_fan(mut cx: set_pwm_fan::Context) {
         loop {
@@ -535,7 +537,6 @@ mod app {
 
     // Hardware task
     // TIM5. Для відправки виміряних даних на дисплей (температура і оберти).
-    // І управління логікою на основі виміряних даних
     #[task(binds = TIM5, local = [tim_5, adc], shared = [adc_buffer, impulses_complete, data], priority = 3)]
     fn tim_5(mut cx: tim_5::Context) {
         if cx.local.tim_5.flags().contains(Flag::Update) {
@@ -547,10 +548,7 @@ mod app {
             let adc_values: &[u16; 4] = cx.local.adc.split_channels(buffer).average();
             cx.shared.data.lock(|data| data.set_temp(adc_values));
         }
-
-        if let Some(imp) = &cx.shared.impulses_complete {
-            cx.shared.data.lock(|data| data.set_rpm(imp));
-        }
+        cx.shared.data.lock(|data| data.set_rpm(&cx.shared.impulses_complete));
     }
 
     // Hardware task

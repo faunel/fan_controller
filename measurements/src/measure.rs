@@ -22,9 +22,6 @@ pub struct Data {
     ntc: [Ntc; 4],
 }
 
-pub trait SetImpulsesComplete {
-    fn set(&mut self, index: usize, fan: &u16);
-}
 
 impl ImpulsesRaw {
     pub fn new() -> Self {
@@ -39,6 +36,10 @@ impl ImpulsesRaw {
 impl ImpulsesComplete {
     pub fn new() -> Self {
         ImpulsesComplete::default()
+    }
+
+    pub fn set(&mut self, index: usize, fan: &u16) {
+        self[index] = *fan;
     }
 }
 
@@ -100,18 +101,6 @@ impl Data {
 
     pub fn get_rpm(&self) -> &[u16; 4] {
         &self.rpm
-    }
-}
-
-impl SetImpulsesComplete for Option<ImpulsesComplete> {
-    fn set(&mut self, index: usize, fan: &u16) {
-        if let Some(v) = self {
-            v[index] = *fan;
-        } else {
-            let mut new_vec = ImpulsesComplete::new();
-            new_vec[index] = *fan;
-            *self = Some(new_vec);
-        }
     }
 }
 

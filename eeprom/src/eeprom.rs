@@ -201,14 +201,14 @@ impl EEPROM {
                 let temp_data = &settings.fans[fan].thresold[thresold].temp.data;
                 if *temp_data != self.read(temp_address).await {
                     self.save(temp_address, temp_data).await;
-                    info!("fan: {}, thresold: {}, data: {}", fan, thresold, temp_data);
+                    // info!("fan: {}, thresold: {}, data: {}", fan, thresold, temp_data);
                 }
 
                 let pwm_address = &settings.fans[fan].thresold[thresold].pwm.address;
                 let pwm_data = &settings.fans[fan].thresold[thresold].pwm.data;
                 if *pwm_data != self.read(pwm_address).await {
                     self.save(pwm_address, pwm_data).await;
-                    info!("fan: {}, thresold: {}, data: {}", fan, thresold, pwm_data);
+                    // info!("fan: {}, thresold: {}, data: {}", fan, thresold, pwm_data);
                 }
             }
         }

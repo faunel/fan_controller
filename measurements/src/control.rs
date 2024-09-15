@@ -56,11 +56,11 @@ impl Control {
                 // info!("fan: {}, pwm: {}", ind_fan, self.current_pwm[ind_fan]);
                 match ind_fan {
                     0 => {
-                        info!("FAN: {}, PWM: {}", ind_fan, self.current_pwm[ind_fan]);
+                        // info!("FAN: {}, PWM: {}", ind_fan, self.current_pwm[ind_fan]);
                         self.timer.0.set_duty_cycle_percent(self.current_pwm[ind_fan]).unwrap()
                     }
                     1 => {
-                        info!("FAN: {}, PWM: {}", ind_fan, self.current_pwm[ind_fan]);
+                        // info!("FAN: {}, PWM: {}", ind_fan, self.current_pwm[ind_fan]);
                         self.timer.1.set_duty_cycle_percent(self.current_pwm[ind_fan]).unwrap()
                     }
                     2 => self.timer.2.set_duty_cycle_percent(self.current_pwm[ind_fan]).unwrap(),
