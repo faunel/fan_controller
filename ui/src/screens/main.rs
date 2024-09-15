@@ -12,7 +12,7 @@ use embedded_graphics::{
     text::Text,
     Drawable,
 };
-use heapless::{String, Vec};
+use heapless::String;
 use monotonic::prelude::*;
 use u8g2_fonts::{
     fonts,
@@ -23,8 +23,8 @@ use u8g2_fonts::{
 // use defmt::{info, println};
 
 pub struct MainScreen<DT, E> {
-    temp: Vec<u8, 4>,
-    rpm: Vec<u16, 4>,
+    temp: [u8; 4],
+    rpm: [u16; 4],
     is_clear: bool,
     _phantom: core::marker::PhantomData<(DT, E)>,
 }
@@ -45,7 +45,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Main
 
 impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
     #[must_use]
-    pub fn new(temp: Vec<u8, 4>, rpm: Vec<u16, 4>, is_clear: bool) -> Self {
+    pub fn new(temp: [u8; 4], rpm: [u16; 4], is_clear: bool) -> Self {
         MainScreen {
             temp,
             rpm,

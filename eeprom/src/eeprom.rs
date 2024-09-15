@@ -3,7 +3,6 @@
 use crate::default_settings::DEFAULT_SETTINGS;
 use defmt::info;
 use eeprom24x::{Eeprom24x, SlaveAddr};
-use heapless::Vec;
 use monotonic::prelude::*;
 use stm32f4xx_hal::{i2c::I2c, pac::I2C2};
 
@@ -11,12 +10,12 @@ type Eeprom = Eeprom24x<I2c<I2C2>, eeprom24x::page_size::B64, eeprom24x::addr_si
 
 #[derive(Debug, Clone)]
 pub struct Settings {
-    pub fans: Vec<SettingFan, 4>,
+    pub fans: [SettingFan; 4],
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct SettingFan {
-    pub thresold: Vec<Thresolds, 4>,
+    pub thresold: [Thresolds; 4],
 }
 
 #[derive(Debug, Default, Clone)]
@@ -46,9 +45,14 @@ impl Settings {
     pub fn new() -> Self {
         let mut current_address: u32 = 0;
 
-        let fans: Vec<SettingFan, 4> = (0..4).map(|_| SettingFan::new(&mut current_address)).collect();
-
-        Settings { fans }
+        Settings {
+            fans: [
+                SettingFan::new(&mut current_address),
+                SettingFan::new(&mut current_address),
+                SettingFan::new(&mut current_address),
+                SettingFan::new(&mut current_address),
+            ],
+        }
     }
 
     pub fn increment_logic(&mut self, fan: &usize, selector: &usize) {
@@ -119,7 +123,12 @@ impl Settings {
 impl SettingFan {
     pub fn new(current_address: &mut u32) -> Self {
         SettingFan {
-            thresold: (0..4).map(|_| Thresolds::new(current_address)).collect(),
+            thresold: [
+                Thresolds::new(current_address),
+                Thresolds::new(current_address),
+                Thresolds::new(current_address),
+                Thresolds::new(current_address),
+            ],
         }
     }
 }

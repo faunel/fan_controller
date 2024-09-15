@@ -1,23 +1,25 @@
 use core::ops::{Deref, DerefMut};
 
-use heapless::Vec;
 use ntc::Ntc;
 
 use crate::ADC_BUFFER;
 
-pub struct ImpulsesRaw(Vec<u16, 4>);
+#[derive(Default)]
+pub struct ImpulsesRaw([u16; 4]);
 
-pub struct ImpulsesComplete(Vec<u16, 4>);
+#[derive(Default)]
+pub struct ImpulsesComplete([u16; 4]);
 
+#[derive(Default)]
 pub struct AdcMeasure {
-    buffer: Vec<[u16; ADC_BUFFER / 4], 4>,
-    data: Vec<u16, 4>,
+    buffer: [[u16; ADC_BUFFER / 4]; 4],
+    data: [u16; 4],
 }
 
 pub struct Data {
-    temp: Vec<u8, 4>,
-    rpm: Vec<u16, 4>,
-    ntc: Vec<Ntc, 4>,
+    temp: [u8; 4],
+    rpm: [u16; 4],
+    ntc: [Ntc; 4],
 }
 
 pub trait SetImpulsesComplete {
@@ -58,7 +60,7 @@ impl AdcMeasure {
         self
     }
 
-    pub fn average(&mut self) -> &Vec<u16, 4> {
+    pub fn average(&mut self) -> &[u16; 4] {
         for (ind, buf) in self.buffer.iter().enumerate() {
             let sum: u32 = buf.iter().map(|&x| x as u32).sum();
             self.data[ind] = (sum / buf.len() as u32) as u16;
@@ -73,7 +75,7 @@ impl Data {
         Data::default()
     }
 
-    pub fn set_temp(&mut self, adc_values: &Vec<u16, 4>) {
+    pub fn set_temp(&mut self, adc_values: &[u16; 4]) {
         for (ind, adc_value) in adc_values.iter().enumerate() {
             let temperature = self.ntc[ind].set_ema_window_size(25).get_temperature(adc_value);
 
@@ -86,17 +88,17 @@ impl Data {
         }
     }
 
-    pub fn set_rpm(&mut self, impulses: &Vec<u16, 4>) {
+    pub fn set_rpm(&mut self, impulses: &[u16; 4]) {
         for (ind, imp) in impulses.iter().enumerate() {
             self.rpm[ind] = *imp / 2;
         }
     }
 
-    pub fn get_temp(&self) -> &Vec<u8, 4> {
+    pub fn get_temp(&self) -> &[u8; 4] {
         &self.temp
     }
 
-    pub fn get_rpm(&self) -> &Vec<u16, 4> {
+    pub fn get_rpm(&self) -> &[u16; 4] {
         &self.rpm
     }
 }
@@ -115,7 +117,7 @@ impl SetImpulsesComplete for Option<ImpulsesComplete> {
 
 // Реалізація трейтів Deref та DerefMut
 impl Deref for ImpulsesRaw {
-    type Target = Vec<u16, 4>;
+    type Target = [u16; 4];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -130,7 +132,7 @@ impl DerefMut for ImpulsesRaw {
 
 // Реалізація трейтів Deref та DerefMut
 impl Deref for ImpulsesComplete {
-    type Target = Vec<u16, 4>;
+    type Target = [u16; 4];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -143,33 +145,12 @@ impl DerefMut for ImpulsesComplete {
     }
 }
 
-impl Default for ImpulsesRaw {
-    fn default() -> Self {
-        ImpulsesRaw((0..4).map(|_| 0).collect())
-    }
-}
-
-impl Default for ImpulsesComplete {
-    fn default() -> Self {
-        ImpulsesComplete((0..4).map(|_| 0).collect())
-    }
-}
-
-impl Default for AdcMeasure {
-    fn default() -> Self {
-        AdcMeasure {
-            buffer: (0..4).map(|_| [0; ADC_BUFFER / 4]).collect(),
-            data: (0..4).map(|_| 0).collect(),
-        }
-    }
-}
-
 impl Default for Data {
     fn default() -> Self {
         Data {
-            temp: (0..4).map(|_| 0).collect(),
-            rpm: (0..4).map(|_| 0).collect(),
-            ntc: (0..4).map(|_| Ntc::new()).collect(),
+            temp: [0; 4],
+            rpm: [0; 4],
+            ntc: [Ntc::new(), Ntc::new(), Ntc::new(), Ntc::new()],
         }
     }
 }

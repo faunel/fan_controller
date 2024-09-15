@@ -2,7 +2,6 @@ use core::cmp::Ordering;
 
 use defmt::info;
 use eeprom::eeprom::Settings;
-use heapless::Vec;
 use stm32f4xx_hal::{hal::pwm::SetDutyCycle, pac::TIM4, timer};
 
 use crate::measure::Data;
@@ -11,16 +10,16 @@ type TimerType = (timer::PwmChannel<TIM4, 0>, timer::PwmChannel<TIM4, 1>, timer:
 
 pub struct Control {
     timer: TimerType,
-    old_pwm: Vec<u8, 4>,
-    current_pwm: Vec<u8, 4>,
+    old_pwm: [u8; 4],
+    current_pwm: [u8; 4],
 }
 
 impl Control {
     pub fn new(timer: TimerType) -> Self {
         Control {
             timer,
-            old_pwm: (0..4).map(|_| 0).collect(),
-            current_pwm: (0..4).map(|_| 0).collect(),
+            old_pwm: [0; 4],
+            current_pwm: [0; 4],
         }
     }
 

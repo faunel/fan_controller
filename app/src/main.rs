@@ -10,7 +10,6 @@ mod app {
     use eeprom::eeprom::{Settings, EEPROM};
     use embassy_futures::select::{select3, Either3};
     use embedded_hal_bus::spi::ExclusiveDevice;
-    use heapless::Vec;
     use measurements::{
         control::Control,
         measure::{AdcMeasure, Data, ImpulsesComplete, ImpulsesRaw, SetImpulsesComplete},
@@ -398,7 +397,7 @@ mod app {
                         // let data = shared.data.lock(|data| core::mem::replace(data, Data::new()));
 
                         shared.data.lock(|data| {
-                            screen = Screens::Main(MainScreen::new(data.get_temp().clone(), data.get_rpm().clone(), *is_clear));
+                            screen = Screens::Main(MainScreen::new(*data.get_temp(), *data.get_rpm(), *is_clear));
                         });
                     }
                     Menu::Fan(fan) => {
@@ -545,7 +544,7 @@ mod app {
 
         let adc_buffer = cx.shared.adc_buffer.lock(|adc_buffer| adc_buffer.take());
         if let Some(buffer) = &adc_buffer {
-            let adc_values: &Vec<u16, 4> = cx.local.adc.split_channels(buffer).average();
+            let adc_values: &[u16; 4] = cx.local.adc.split_channels(buffer).average();
             cx.shared.data.lock(|data| data.set_temp(adc_values));
         }
 
