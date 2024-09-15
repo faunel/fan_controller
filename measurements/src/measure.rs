@@ -14,10 +14,10 @@ pub struct AdcMeasure {
     data: Vec<u16, 4>,
 }
 
-#[derive(Debug, Clone)]
 pub struct Data {
-    pub temp: Vec<u8, 4>,
-    pub rpm: Vec<u16, 4>,
+    temp: Vec<u8, 4>,
+    rpm: Vec<u16, 4>,
+    ntc: Vec<Ntc, 4>,
 }
 
 pub trait SetImpulsesComplete {
@@ -75,7 +75,7 @@ impl Data {
 
     pub fn set_temp(&mut self, adc_values: &Vec<u16, 4>) {
         for (ind, adc_value) in adc_values.iter().enumerate() {
-            let temperature = Ntc::new().set_ema_window_size(10).get_temperature(adc_value);
+            let temperature = self.ntc[ind].set_ema_window_size(25).get_temperature(adc_value);
 
             if let Some(mut temp) = temperature {
                 if temp > 99 {
@@ -169,6 +169,7 @@ impl Default for Data {
         Data {
             temp: (0..4).map(|_| 0).collect(),
             rpm: (0..4).map(|_| 0).collect(),
+            ntc: (0..4).map(|_| Ntc::new()).collect(),
         }
     }
 }

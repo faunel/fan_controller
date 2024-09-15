@@ -149,6 +149,34 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
             ItemSetting::Item(_) => {}
         }
 
+        // let mut y1 = 33;
+        // let mut y2 = y1 + 6;
+        // let mut y3 = y2 + 6;
+        // Triangle::new(Point::new(0, y1), Point::new(6, y2), Point::new(0, y3))
+        //     .into_styled(PrimitiveStyle::with_fill(Rgb565::BLUE))
+        //     .draw(display).unwrap();
+
+        // y1 = 58;
+        // y2 = y1 + 6;
+        // y3 = y2 + 6;
+        // Triangle::new(Point::new(0, y1), Point::new(6, y2), Point::new(0, y3))
+        //     .into_styled(PrimitiveStyle::with_fill(Rgb565::BLUE))
+        //     .draw(display).unwrap();
+
+        //     y1 = 83;
+        //     y2 = y1 + 6;
+        //     y3 = y2 + 6;
+        // Triangle::new(Point::new(0, y1), Point::new(6, y2), Point::new(0, y3))
+        //     .into_styled(PrimitiveStyle::with_fill(Rgb565::BLUE))
+        //     .draw(display).unwrap();
+
+        //     y1 = 108;
+        //     y2 = y1 + 6;
+        //     y3 = y2 + 6;
+        // Triangle::new(Point::new(0, y1), Point::new(6, y2), Point::new(0, y3))
+        //     .into_styled(PrimitiveStyle::with_fill(Rgb565::BLUE))
+        //     .draw(display).unwrap();
+
         // Рядок перший. Температура
         style_segment.segment_color = fan1_temp_segment_color;
         let mut text: String<2> = String::new();

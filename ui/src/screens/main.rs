@@ -12,8 +12,7 @@ use embedded_graphics::{
     text::Text,
     Drawable,
 };
-use heapless::String;
-use measurements::measure::Data;
+use heapless::{String, Vec};
 use monotonic::prelude::*;
 use u8g2_fonts::{
     fonts,
@@ -24,7 +23,8 @@ use u8g2_fonts::{
 // use defmt::{info, println};
 
 pub struct MainScreen<DT, E> {
-    data: Data,
+    temp: Vec<u8, 4>,
+    rpm: Vec<u16, 4>,
     is_clear: bool,
     _phantom: core::marker::PhantomData<(DT, E)>,
 }
@@ -45,9 +45,10 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Main
 
 impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
     #[must_use]
-    pub fn new(data: Data, is_clear: bool) -> Self {
+    pub fn new(temp: Vec<u8, 4>, rpm: Vec<u16, 4>, is_clear: bool) -> Self {
         MainScreen {
-            data,
+            temp,
+            rpm,
             is_clear,
             _phantom: core::marker::PhantomData,
         }
@@ -122,7 +123,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[0].temp).unwrap();
-        write!(text, "{:02}", self.data.temp[0]).unwrap();
+        write!(text, "{:02}", self.temp[0]).unwrap();
         Text::new(&text, Point::new(43, 39), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
 
@@ -130,7 +131,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[0].rpm).unwrap();
-        write!(text, "{:04}", self.data.rpm[0]).unwrap();
+        write!(text, "{:04}", self.rpm[0]).unwrap();
         Text::new(&text, Point::new(90, 39), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
 
@@ -143,7 +144,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[1].temp).unwrap();
-        write!(text, "{:02}", self.data.temp[1]).unwrap();
+        write!(text, "{:02}", self.temp[1]).unwrap();
         Text::new(&text, Point::new(43, 67), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
 
@@ -151,7 +152,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[1].rpm).unwrap();
-        write!(text, "{:04}", self.data.rpm[1]).unwrap();
+        write!(text, "{:04}", self.rpm[1]).unwrap();
         Text::new(&text, Point::new(90, 67), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
 
@@ -164,7 +165,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[2].temp).unwrap();
-        write!(text, "{:02}", self.data.temp[2]).unwrap();
+        write!(text, "{:02}", self.temp[2]).unwrap();
         Text::new(&text, Point::new(43, 95), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
 
@@ -172,7 +173,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[2].rpm).unwrap();
-        write!(text, "{:04}", self.data.rpm[2]).unwrap();
+        write!(text, "{:04}", self.rpm[2]).unwrap();
         Text::new(&text, Point::new(90, 95), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
 
@@ -185,7 +186,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::RED);
         let mut text: String<2> = String::new();
         // uwrite!(&mut text, "{}", data[3].temp).unwrap();
-        write!(text, "{:02}", self.data.temp[3]).unwrap();
+        write!(text, "{:02}", self.temp[3]).unwrap();
         Text::new(&text, Point::new(43, 124), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
 
@@ -193,7 +194,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         style_segment.segment_color = Some(Rgb565::BLUE);
         let mut text: String<4> = String::new();
         // uwrite!(&mut text, "{}", data[3].rpm).unwrap();
-        write!(text, "{:04}", self.data.rpm[3]).unwrap();
+        write!(text, "{:04}", self.rpm[3]).unwrap();
         Text::new(&text, Point::new(90, 124), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
     }

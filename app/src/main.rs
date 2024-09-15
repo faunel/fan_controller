@@ -196,14 +196,6 @@ mod app {
         fan4_exti.enable_interrupt(&mut exti);
         fan4_exti.trigger_on_edge(&mut exti, Edge::Falling);
 
-        // TIM5. Для відправки виміряних даних на дисплей (температура і оберти).
-        // І управління логікою на основі виміряних даних
-        // Викликати кожні 40 мс
-        let timer = Timer::new(dp.TIM5, &clocks);
-        let mut tim_5 = timer.counter_hz();
-        tim_5.start(25.Hz()).unwrap();
-        tim_5.listen(Event::Update);
-
         // TIM4. PWM для вентиляторів
         // Рекомендована частота 25 кілогерц
         let ch_1: timer::ChannelBuilder<TIM4, 0> = timer::Channel1::new(gpiob.pb6);
@@ -221,6 +213,14 @@ mod app {
         tim_4.enable(timer::Channel::C3);
         tim_4.enable(timer::Channel::C4);
         let tim_4 = tim_4.split();
+
+        // TIM5. Для відправки виміряних даних на дисплей (температура і оберти).
+        // І управління логікою на основі виміряних даних
+        // Викликати кожні 40 мс
+        let timer = Timer::new(dp.TIM5, &clocks);
+        let mut tim_5 = timer.counter_hz();
+        tim_5.start(25.Hz()).unwrap();
+        tim_5.listen(Event::Update);
 
         // TIM9. Для вимірювання частоти вентиляторів.
         // Викликати раз на секунду
@@ -279,6 +279,7 @@ mod app {
         save::spawn().unwrap();
         button_task::spawn().unwrap();
         display_menu_task::spawn().unwrap();
+        set_pwm_fan::spawn().unwrap();
 
         (
             Shared {
@@ -397,7 +398,7 @@ mod app {
                         // let data = shared.data.lock(|data| core::mem::replace(data, Data::new()));
 
                         shared.data.lock(|data| {
-                            screen = Screens::Main(MainScreen::new(data.clone(), *is_clear));
+                            screen = Screens::Main(MainScreen::new(data.get_temp().clone(), data.get_rpm().clone(), *is_clear));
                         });
                     }
                     Menu::Fan(fan) => {
@@ -429,11 +430,27 @@ mod app {
             ButtonConfig::new(MyDuration::millis(20), MyDuration::millis(1), MyDuration::millis(500), ButtonMode::PullUp, 80);
 
         let mut btn_minus = Button::new(cx.local.btn_minus_async, button_config);
-        let mut btn_plus = Button::new(cx.local.btn_plus_async, button_config);
         let mut btn_ok = Button::new(cx.local.btn_ok_async, button_config);
+        let mut btn_plus = Button::new(cx.local.btn_plus_async, button_config);
 
         loop {
             let select = select3(btn_minus.update(), btn_ok.update(), btn_plus.update()).await;
+
+            // let is_pressed_minus_plus = btn_minus.is_pin_pressed() && btn_plus.is_pin_pressed();
+            // if is_pressed_minus_plus {
+            //     Mono::delay(500.millis()).await;
+            //     if is_pressed_minus_plus {
+            //         cx.shared.menu.lock(|menu| {
+            //             *menu = Menu::Settings;
+            //         });
+            //     }
+            // }
+
+            // match select {
+            //     Either3::First(_) => info!("minus"),
+            //     Either3::Second(_) => info!("ok"),
+            //     Either3::Third(_) => info!("plus"),
+            // }
 
             cx.shared.no_click_timer.lock(|no_click_timer| *no_click_timer = Some(10));
 
@@ -506,10 +523,21 @@ mod app {
         }
     }
 
+    #[task(local = [control], shared = [data, settings], priority = 2)]
+    async fn set_pwm_fan(mut cx: set_pwm_fan::Context) {
+        loop {
+            (&mut cx.shared.data, &mut cx.shared.settings).lock(|data, settings| {
+                // let temp = data.get_temp();
+                cx.local.control.run(settings, data);
+            });
+            Mono::delay(200.millis()).await;
+        }
+    }
+
     // Hardware task
     // TIM5. Для відправки виміряних даних на дисплей (температура і оберти).
     // І управління логікою на основі виміряних даних
-    #[task(binds = TIM5, local = [tim_5, adc, control], shared = [adc_buffer, impulses_complete, data, settings], priority = 3)]
+    #[task(binds = TIM5, local = [tim_5, adc], shared = [adc_buffer, impulses_complete, data], priority = 3)]
     fn tim_5(mut cx: tim_5::Context) {
         if cx.local.tim_5.flags().contains(Flag::Update) {
             cx.local.tim_5.clear_flags(Flag::Update);
@@ -524,11 +552,6 @@ mod app {
         if let Some(imp) = &cx.shared.impulses_complete {
             cx.shared.data.lock(|data| data.set_rpm(imp));
         }
-
-        (cx.shared.data, cx.shared.settings).lock(|data, settings| {
-            let temp = data.get_temp();
-            cx.local.control.run(temp, settings);
-        });
     }
 
     // Hardware task

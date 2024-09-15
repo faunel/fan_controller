@@ -3,7 +3,6 @@
 
 use libm::log;
 
-#[derive(Debug, Default)]
 pub struct Ntc {
     adc_resolution: u16,
     b_value: u16,
@@ -18,16 +17,7 @@ pub struct Ntc {
 impl Ntc {
     #[must_use]
     pub fn new() -> Self {
-        Ntc {
-            adc_resolution: 1 << 12,
-            b_value: 3950,
-            resistor: 10.0,
-            thermistor: 10.0,
-            nominal_temp: 25.0,
-            smoothing_coefficient: 1.0,
-
-            filter_value: 0.0,
-        }
+        Ntc::default()
     }
 
     pub fn set_resolution(&mut self, adc_resolution: u16) -> &mut Self {
@@ -84,5 +74,20 @@ impl Ntc {
         self.filter_value += (value - self.filter_value) * self.smoothing_coefficient;
 
         self.filter_value
+    }
+}
+
+impl Default for Ntc {
+    fn default() -> Self {
+        Ntc {
+            adc_resolution: 1 << 12,
+            b_value: 3950,
+            resistor: 10.0,
+            thermistor: 10.0,
+            nominal_temp: 25.0,
+            smoothing_coefficient: 1.0,
+
+            filter_value: 0.0,
+        }
     }
 }
