@@ -37,7 +37,7 @@ pub struct EEPROM {
 
 enum Modify {
     Increment,
-    Decrement
+    Decrement,
 }
 
 #[allow(clippy::new_without_default)]
@@ -53,9 +53,9 @@ impl Settings {
 
     pub fn increment_logic(&mut self, fan: &usize, selector: &usize) {
         let current_setting = self.get(fan, selector);
-        let is_temperature = *selector % 2 != 0; 
+        let is_temperature = *selector % 2 != 0;
         let threshold = if is_temperature { 80 } else { 100 };
-    
+
         if *current_setting < threshold {
             if *selector >= 7 {
                 self.modify(fan, selector, Modify::Increment);
@@ -67,7 +67,6 @@ impl Settings {
             }
         }
     }
-
 
     pub fn decrement_logic(&mut self, fan: &usize, selector: &usize) {
         let current_setting = self.get(fan, selector);
@@ -101,7 +100,6 @@ impl Settings {
             Modify::Decrement => *s -= 1,
         }
     }
-
 
     pub fn get(&self, fan: &usize, selector: &usize) -> &u16 {
         match selector {

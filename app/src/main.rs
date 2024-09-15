@@ -105,7 +105,7 @@ mod app {
 
         // let start = DWT::cycle_count();
         // info!("{}", DWT::cycle_count() - start);
- 
+
         // Monotonic timer
         Mono::start(cp.SYST, clocks.sysclk().to_Hz());
 
@@ -497,7 +497,6 @@ mod app {
                         ButtonEvent::LongPressDuration(_) => match menu {
                             Menu::Fan(fan) => match item_setting {
                                 ItemSetting::Item(item) => settings.increment_logic(fan, item),
-                                
                             },
                             Menu::Main => {}
                         },
