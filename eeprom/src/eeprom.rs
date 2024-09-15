@@ -1,7 +1,6 @@
 // #![allow(unused)]
 
 use crate::default_settings::DEFAULT_SETTINGS;
-use defmt::info;
 use eeprom24x::{Eeprom24x, SlaveAddr};
 use monotonic::prelude::*;
 use stm32f4xx_hal::{i2c::I2c, pac::I2C2};

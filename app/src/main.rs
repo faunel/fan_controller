@@ -5,7 +5,6 @@
 #[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, dispatchers = [SPI3, SPI4])]
 mod app {
     use async_button::prelude::*;
-    use defmt::info;
     use display_interface_spi::SPIInterface;
     use eeprom::eeprom::{Settings, EEPROM};
     use embassy_futures::select::{select3, Either3};
@@ -22,7 +21,7 @@ mod app {
         Builder,
     };
     use monotonic::prelude::*;
-    use stm32f4::stm32f401::{ADC1, DMA2, DWT, TIM4, TIM5, TIM9};
+    use stm32f4::stm32f401::{ADC1, DMA2, TIM4, TIM5, TIM9};
     use stm32f4xx_hal::{
         adc::{
             config::{AdcConfig, Clock, Continuous, Dma, Resolution, SampleTime, Scan, Sequence},
@@ -548,7 +547,7 @@ mod app {
             let adc_values: &[u16; 4] = cx.local.adc.split_channels(buffer).average();
             cx.shared.data.lock(|data| data.set_temp(adc_values));
         }
-        cx.shared.data.lock(|data| data.set_rpm(&cx.shared.impulses_complete));
+        cx.shared.data.lock(|data| data.set_rpm(cx.shared.impulses_complete));
     }
 
     // Hardware task
