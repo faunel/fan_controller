@@ -34,7 +34,7 @@ mod app {
         prelude::*,
         rcc::RccExt,
         spi::{Mode, NoMiso, Phase, Polarity, Spi},
-        timer::{self, CounterHz, Event, Flag, Timer},
+        timer::{self, CounterHz, Event, Flag, Timer}, watchdog::IndependentWatchdog,
     };
     use ui::setting::ItemSetting;
     use ui::Display;
@@ -81,6 +81,7 @@ mod app {
         eeprom: EEPROM,
         adc: AdcMeasure,
         control: Control,
+        iwdg: IndependentWatchdog
     }
 
     #[init]
@@ -309,6 +310,7 @@ mod app {
                 eeprom,
                 adc: AdcMeasure::new(),
                 control: Control::new(tim_4),
+                iwdg: IndependentWatchdog::new(dp.IWDG)
             },
         )
     }
@@ -626,9 +628,12 @@ mod app {
         *cx.local.a += 1;
     }
 
-    #[idle(local = [led])]
-    fn idle(_cx: idle::Context) -> ! {
+    #[idle(local = [led, iwdg])]
+    fn idle(cx: idle::Context) -> ! {
+        cx.local.iwdg.start(3000.millis());
+  
         loop {
+            cx.local.iwdg.feed();
             // cx.local.led.toggle();
             rtic::export::wfi();
         }
