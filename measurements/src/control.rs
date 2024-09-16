@@ -1,6 +1,4 @@
 use core::cmp::Ordering;
-
-use defmt::info;
 use eeprom::eeprom::Settings;
 use stm32f4xx_hal::{hal::pwm::SetDutyCycle, pac::TIM4, timer};
 
