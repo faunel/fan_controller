@@ -19,34 +19,7 @@ impl Ntc {
     pub fn new() -> Self {
         Ntc::default()
     }
-}
 
-impl Default for Ntc {
-    fn default() -> Self {
-        Ntc {
-            adc_resolution: 1 << 12,
-            b_value: 3950,
-            resistor: 10.0,
-            thermistor: 10.0,
-            nominal_temp: 25.0,
-            smoothing_coefficient: 1.0,
-
-            filter_value: 0.0,
-        }
-    }
-}
-
-pub trait NtcLib {
-    fn set_resolution(&mut self, adc_resolution: u16) -> &mut Self;
-    fn set_b_value(&mut self, b_value: u16) -> &mut Self;
-    fn set_resistor(&mut self, resistor: f64) -> &mut Self;
-    fn set_thermistor(&mut self, thermistor: f64) -> &mut Self;
-    fn set_nominal_temp(&mut self, nominal_temp: f64) -> &mut Self;
-    fn set_ema_window_size(&mut self, window_size: u16) -> &mut Self;
-    fn get_temperature(&mut self, adc_value: &u16) -> Option<f64>;
-}
-
-impl NtcLib for Ntc {
     fn set_resolution(&mut self, adc_resolution: u16) -> &mut Self {
         self.adc_resolution = 1 << adc_resolution;
         self
@@ -77,7 +50,7 @@ impl NtcLib for Ntc {
         self
     }
 
-    fn get_temperature(&mut self, adc_value: &u16) -> Option<f64> {
+    pub fn get_temperature(&self, adc_value: &u16) -> Option<f64> {
         if *adc_value == 0 {
             return None;
         }
@@ -89,5 +62,20 @@ impl NtcLib for Ntc {
         let temp_celsius = temp_kelvin - 273.15;
 
         Some(temp_celsius)
+    }
+}
+
+impl Default for Ntc {
+    fn default() -> Self {
+        Ntc {
+            adc_resolution: 1 << 12,
+            b_value: 3950,
+            resistor: 10.0,
+            thermistor: 10.0,
+            nominal_temp: 25.0,
+            smoothing_coefficient: 1.0,
+
+            filter_value: 0.0,
+        }
     }
 }

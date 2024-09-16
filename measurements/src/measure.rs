@@ -1,6 +1,6 @@
 use crate::ADC_BUFFER;
 use core::ops::{Deref, DerefMut};
-use ntc::NtcLib;
+use ntc::Ntc;
 
 #[derive(Default)]
 pub struct ImpulsesRaw([u16; 4]);
@@ -14,11 +14,8 @@ pub struct AdcMeasure {
     data: [u16; 4],
 }
 
-pub struct Data<N>
-where
-    N: NtcLib,
-{
-    ntc: N,
+pub struct Data {
+    ntc: Ntc,
     temp: [u8; 4],
     rpm: [u16; 4],
     filter_temp: [f64; 4],
@@ -73,12 +70,9 @@ impl AdcMeasure {
     }
 }
 
-impl<N> Data<N>
-where
-    N: NtcLib,
-{
+impl Data {
     #[must_use]
-    pub fn new(ema_window_size: u16, ntc: N) -> Self {
+    pub fn new(ema_window_size: u16, ntc: Ntc) -> Self {
         Data {
             ntc,
             smoothing_coefficient: 2.0 / (f64::from(ema_window_size) + 1.0),

@@ -52,7 +52,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        data: Data<Ntc>,
+        data: Data,
         transfer: DMATransfer,
         menu: Menu,
         settings: Settings,

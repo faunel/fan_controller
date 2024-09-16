@@ -1,6 +1,5 @@
 use core::cmp::Ordering;
 use eeprom::eeprom::Settings;
-use ntc::NtcLib;
 use stm32f4xx_hal::{hal::pwm::SetDutyCycle, pac::TIM4, timer};
 
 use crate::measure::Data;
@@ -22,10 +21,7 @@ impl Control {
         }
     }
 
-    pub fn run<N>(&mut self, settings: &Settings, data: &Data<N>)
-    where
-        N: NtcLib,
-    {
+    pub fn run(&mut self, settings: &Settings, data: &Data) {
         for (ind_fan, fan) in settings.fans.iter().enumerate() {
             let temp = data.get_temp();
             let current_temp = temp[ind_fan];
