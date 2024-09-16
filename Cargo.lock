@@ -376,6 +376,7 @@ dependencies = [
  "measurements",
  "mipidsi",
  "monotonic",
+ "ntc",
  "panic-probe",
  "rtic",
  "stm32f4",

@@ -21,6 +21,7 @@ mod app {
         Builder,
     };
     use monotonic::prelude::*;
+    use ntc::Ntc;
     use stm32f4::stm32f401::{ADC1, DMA2, TIM4, TIM5, TIM9};
     use stm32f4xx_hal::{
         adc::{
@@ -51,7 +52,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        data: Data,
+        data: Data<Ntc>,
         transfer: DMATransfer,
         menu: Menu,
         settings: Settings,
@@ -215,8 +216,6 @@ mod app {
         let tim_4 = tim_4.split();
 
         // TIM5. Для відправки виміряних даних на дисплей (температура і оберти).
-        // І управління логікою на основі виміряних даних
-        // Викликати кожні 40 мс
         let timer = Timer::new(dp.TIM5, &clocks);
         let mut tim_5 = timer.counter_hz();
         tim_5.start(25.Hz()).unwrap();
@@ -272,8 +271,7 @@ mod app {
         let sda = gpiob.pb3.into_floating_input();
         let i2c: I2c<I2C2> = I2c::new(dp.I2C2, (scl, sda), i2c::Mode::standard(100.kHz()), &clocks);
 
-        let settings = Settings::new();
-        let eeprom = EEPROM::new(i2c);
+        let ntc = Ntc::default();
 
         // Tasks
         save::spawn().unwrap();
@@ -283,10 +281,10 @@ mod app {
 
         (
             Shared {
-                data: Data::new(),
+                data: Data::new(25, ntc),
                 transfer,
                 menu: Menu::Main,
-                settings,
+                settings: Settings::new(),
                 item_setting: ItemSetting::Item(1),
                 is_clear: true,
                 no_click_timer: None,
@@ -308,7 +306,7 @@ mod app {
                 btn_minus_async,
                 btn_ok_async,
                 btn_plus_async,
-                eeprom,
+                eeprom: EEPROM::new(i2c),
                 adc: AdcMeasure::new(),
                 control: Control::new(tim_4),
                 iwdg: IndependentWatchdog::new(dp.IWDG),

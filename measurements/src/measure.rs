@@ -1,8 +1,6 @@
-use core::ops::{Deref, DerefMut};
-
-use ntc::Ntc;
-
 use crate::ADC_BUFFER;
+use core::ops::{Deref, DerefMut};
+use ntc::NtcLib;
 
 #[derive(Default)]
 pub struct ImpulsesRaw([u16; 4]);
@@ -16,10 +14,16 @@ pub struct AdcMeasure {
     data: [u16; 4],
 }
 
-pub struct Data {
+pub struct Data<N>
+where
+    N: NtcLib,
+{
+    ntc: N,
     temp: [u8; 4],
     rpm: [u16; 4],
-    ntc: [Ntc; 4],
+    filter_temp: [f64; 4],
+    filter_rpm: [f64; 4],
+    smoothing_coefficient: f64,
 }
 
 impl ImpulsesRaw {
@@ -69,28 +73,45 @@ impl AdcMeasure {
     }
 }
 
-impl Data {
+impl<N> Data<N>
+where
+    N: NtcLib,
+{
     #[must_use]
-    pub fn new() -> Self {
-        Data::default()
+    pub fn new(ema_window_size: u16, ntc: N) -> Self {
+        Data {
+            ntc,
+            smoothing_coefficient: 2.0 / (f64::from(ema_window_size) + 1.0),
+            temp: [0; 4],
+            rpm: [0; 4],
+            filter_temp: [0.0; 4],
+            filter_rpm: [0.0; 4],
+        }
     }
 
     pub fn set_temp(&mut self, adc_values: &[u16; 4]) {
         for (ind, adc_value) in adc_values.iter().enumerate() {
-            let temperature = self.ntc[ind].set_ema_window_size(25).get_temperature(adc_value);
+            let temperature = self.ntc.get_temperature(adc_value);
 
-            if let Some(mut temp) = temperature {
-                if temp > 99 {
-                    temp = 99;
+            self.temp[ind] = temperature.map_or(99, |temp| {
+                let temp = self.ema_temp(ind, temp);
+                let temp = (temp + 0.5) as u8;
+
+                if temp < 100 && temp > 0 {
+                    temp
+                } else {
+                    99
                 }
-                self.temp[ind] = temp;
-            }
+            });
         }
     }
 
     pub fn set_rpm(&mut self, impulses: &[u16; 4]) {
         for (ind, imp) in impulses.iter().enumerate() {
-            self.rpm[ind] = *imp / 2;
+            let rpm = *imp / 2;
+            let rpm = self.ema_rpm(ind, rpm as f64);
+
+            self.rpm[ind] = (rpm + 0.5) as u16;
         }
     }
 
@@ -100,6 +121,24 @@ impl Data {
 
     pub fn get_rpm(&self) -> &[u16; 4] {
         &self.rpm
+    }
+
+    fn ema_temp(&mut self, ind: usize, value: f64) -> f64 {
+        Self::ema(&mut self.filter_temp, ind, value, self.smoothing_coefficient)
+    }
+
+    fn ema_rpm(&mut self, ind: usize, value: f64) -> f64 {
+        Self::ema(&mut self.filter_rpm, ind, value, self.smoothing_coefficient)
+    }
+
+    fn ema(filter: &mut [f64; 4], ind: usize, value: f64, smoothing_coefficient: f64) -> f64 {
+        if filter[ind] == 0.0 {
+            filter[ind] = value;
+        }
+
+        filter[ind] += (value - filter[ind]) * smoothing_coefficient;
+
+        filter[ind]
     }
 }
 
@@ -130,15 +169,5 @@ impl Deref for ImpulsesComplete {
 impl DerefMut for ImpulsesComplete {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-impl Default for Data {
-    fn default() -> Self {
-        Data {
-            temp: [0; 4],
-            rpm: [0; 4],
-            ntc: [Ntc::new(), Ntc::new(), Ntc::new(), Ntc::new()],
-        }
     }
 }
