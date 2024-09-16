@@ -92,6 +92,9 @@ mod app {
         // Clock configuration
         let clocks = dp.RCC.constrain().cfgr.use_hse(25.MHz()).sysclk(80.MHz()).freeze();
 
+        // Monotonic timer
+        Mono::start(cp.SYST, clocks.sysclk().to_Hz());
+
         // GPIO
         let gpioa = dp.GPIOA.split();
         let gpiob = dp.GPIOB.split();
@@ -104,9 +107,6 @@ mod app {
 
         // let start = DWT::cycle_count();
         // info!("{}", DWT::cycle_count() - start);
-
-        // Monotonic timer
-        Mono::start(cp.SYST, clocks.sysclk().to_Hz());
 
         // SPI1 pin configuration
         let sck = gpioa.pa5.into_alternate().speed(Speed::VeryHigh);
