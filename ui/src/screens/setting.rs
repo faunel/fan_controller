@@ -128,25 +128,19 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
             .inactive_segment_color(Rgb565::BLACK)
             .build();
 
-        let mut fan1_temp_segment_color = Some(Rgb565::RED);
-        let mut fan1_pwm_segment_color = Some(Rgb565::GREEN);
-        let mut fan2_temp_segment_color = Some(Rgb565::RED);
-        let mut fan2_pwm_segment_color = Some(Rgb565::GREEN);
-        let mut fan3_temp_segment_color = Some(Rgb565::RED);
-        let mut fan3_pwm_segment_color = Some(Rgb565::GREEN);
-        let mut fan4_temp_segment_color = Some(Rgb565::RED);
-        let mut fan4_pwm_segment_color = Some(Rgb565::GREEN);
+        let mut temp_colors = [Some(Rgb565::RED); 4];
+        let mut pwm_colors = [Some(Rgb565::GREEN); 4];
 
         match self.item_setting {
-            ItemSetting::Item(1) => fan1_temp_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(2) => fan1_pwm_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(3) => fan2_temp_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(4) => fan2_pwm_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(5) => fan3_temp_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(6) => fan3_pwm_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(7) => fan4_temp_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(8) => fan4_pwm_segment_color = Some(Rgb565::WHITE),
-            ItemSetting::Item(_) => {}
+            ItemSetting::Item(i) if (1..=8).contains(&i) => {
+                let index = (i - 1) / 2;
+                if i % 2 == 1 {
+                    temp_colors[index] = Some(Rgb565::WHITE);
+                } else {
+                    pwm_colors[index] = Some(Rgb565::WHITE);
+                }
+            }
+            _ => {}
         }
 
         // let mut y1 = 33;
@@ -178,56 +172,56 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
         //     .draw(display).unwrap();
 
         // Рядок перший. Температура
-        style_segment.segment_color = fan1_temp_segment_color;
+        style_segment.segment_color = temp_colors[0];
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[0].temp.data).unwrap();
         Text::new(&text, Point::new(26, 49), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
 
         // Рядок перший. ШІМ
-        style_segment.segment_color = fan1_pwm_segment_color;
+        style_segment.segment_color = pwm_colors[0];
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[0].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 49), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
 
         // Рядок другий. Температура
-        style_segment.segment_color = fan2_temp_segment_color;
+        style_segment.segment_color = temp_colors[1];
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[1].temp.data).unwrap();
         Text::new(&text, Point::new(26, 74), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
 
         // Рядок другий. ШІМ
-        style_segment.segment_color = fan2_pwm_segment_color;
+        style_segment.segment_color = pwm_colors[1];
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[1].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 74), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
 
         // Рядок третій. Температура
-        style_segment.segment_color = fan3_temp_segment_color;
+        style_segment.segment_color = temp_colors[2];
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[2].temp.data).unwrap();
         Text::new(&text, Point::new(26, 99), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
 
         // Рядок третій. ШІМ
-        style_segment.segment_color = fan3_pwm_segment_color;
+        style_segment.segment_color = pwm_colors[2];
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[2].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 99), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
 
         // Рядок четвертий. Температура
-        style_segment.segment_color = fan4_temp_segment_color;
+        style_segment.segment_color = temp_colors[3];
         let mut text: String<2> = String::new();
         write!(text, "{:02}", self.fans.thresold[3].temp.data).unwrap();
         Text::new(&text, Point::new(26, 124), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
 
         // Рядок четвертий. ШІМ
-        style_segment.segment_color = fan4_pwm_segment_color;
+        style_segment.segment_color = pwm_colors[3];
         let mut text: String<3> = String::new();
         write!(text, "{:03}", self.fans.thresold[3].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 124), style_segment).draw(display).unwrap();

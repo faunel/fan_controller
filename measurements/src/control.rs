@@ -1,5 +1,6 @@
 use core::cmp::Ordering;
 
+use defmt::info;
 use eeprom::eeprom::Settings;
 use stm32f4xx_hal::{hal::pwm::SetDutyCycle, pac::TIM4, timer};
 
@@ -35,9 +36,14 @@ impl Control {
                 for ind_thresold in 0..4 {
                     let set_temp_from = fan.thresold[ind_thresold].temp.data as u8;
 
-                    let set_temp_to = if ind_thresold <= 2 { fan.thresold[ind_thresold + 1].temp.data as u8 } else { u8::MAX };
+                    let set_temp_to = if ind_thresold <= 2 {
+                        fan.thresold[ind_thresold + 1].temp.data as u8
+                    } else {
+                        u8::MAX
+                    };
 
-                    if current_temp >= set_temp_from && current_temp < set_temp_to {
+                    // current_temp >= set_temp_from && current_temp < set_temp_to
+                    if (set_temp_from..set_temp_to).contains(&current_temp) {
                         let set_pwm = fan.thresold[ind_thresold].pwm.data as u8;
 
                         match self.current_pwm[ind_fan].cmp(&set_pwm) {

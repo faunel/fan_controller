@@ -34,7 +34,8 @@ mod app {
         prelude::*,
         rcc::RccExt,
         spi::{Mode, NoMiso, Phase, Polarity, Spi},
-        timer::{self, CounterHz, Event, Flag, Timer}, watchdog::IndependentWatchdog,
+        timer::{self, CounterHz, Event, Flag, Timer},
+        watchdog::IndependentWatchdog,
     };
     use ui::setting::ItemSetting;
     use ui::Display;
@@ -81,7 +82,7 @@ mod app {
         eeprom: EEPROM,
         adc: AdcMeasure,
         control: Control,
-        iwdg: IndependentWatchdog
+        iwdg: IndependentWatchdog,
     }
 
     #[init]
@@ -310,7 +311,7 @@ mod app {
                 eeprom,
                 adc: AdcMeasure::new(),
                 control: Control::new(tim_4),
-                iwdg: IndependentWatchdog::new(dp.IWDG)
+                iwdg: IndependentWatchdog::new(dp.IWDG),
             },
         )
     }
@@ -546,7 +547,7 @@ mod app {
 
         let adc_buffer = cx.shared.adc_buffer.lock(|adc_buffer| adc_buffer.take());
         if let Some(buffer) = &adc_buffer {
-            let adc_values: &[u16; 4] = cx.local.adc.split_channels(buffer).average();
+            let adc_values: &[u16; 4] = cx.local.adc.split_channels(buffer);
             cx.shared.data.lock(|data| data.set_temp(adc_values));
         }
         cx.shared.data.lock(|data| data.set_rpm(cx.shared.impulses_complete));
@@ -631,7 +632,7 @@ mod app {
     #[idle(local = [led, iwdg])]
     fn idle(cx: idle::Context) -> ! {
         cx.local.iwdg.start(3000.millis());
-  
+
         loop {
             cx.local.iwdg.feed();
             // cx.local.led.toggle();

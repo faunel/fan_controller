@@ -22,7 +22,6 @@ pub struct Data {
     ntc: [Ntc; 4],
 }
 
-
 impl ImpulsesRaw {
     pub fn new() -> Self {
         ImpulsesRaw::default()
@@ -48,7 +47,7 @@ impl AdcMeasure {
         AdcMeasure::default()
     }
 
-    pub fn split_channels(&mut self, buffer: &[u16; ADC_BUFFER]) -> &mut Self {
+    pub fn split_channels(&mut self, buffer: &[u16; ADC_BUFFER]) -> &[u16; 4] {
         for (i, &value) in buffer.iter().enumerate() {
             match i % 4 {
                 0 => self.buffer[0][i / 4] = value,
@@ -58,10 +57,10 @@ impl AdcMeasure {
                 _ => unreachable!(),
             }
         }
-        self
+        self.average()
     }
 
-    pub fn average(&mut self) -> &[u16; 4] {
+    fn average(&mut self) -> &[u16; 4] {
         for (ind, buf) in self.buffer.iter().enumerate() {
             let sum: u32 = buf.iter().map(|&x| x as u32).sum();
             self.data[ind] = (sum / buf.len() as u32) as u16;
