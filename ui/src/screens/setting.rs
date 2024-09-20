@@ -1,5 +1,6 @@
 use crate::{screens::Screen, BACKGROUND_COLOR};
 use core::fmt::{Debug, Write};
+use defmt::info;
 use eeprom::eeprom::SettingFan;
 use eg_seven_segment::SevenSegmentStyleBuilder;
 use embedded_graphics::{
@@ -11,6 +12,8 @@ use embedded_graphics::{
 };
 use heapless::String;
 use monotonic::prelude::*;
+use rclite::Rc;
+use spin::RwLock;
 use u8g2_fonts::{
     fonts,
     types::{FontColor, VerticalPosition},
@@ -31,24 +34,30 @@ impl Default for ItemSetting {
     }
 }
 
+#[derive(Clone)]
 pub struct SettingScreen<DT, E> {
-    fans: SettingFan,
-    fan_number: usize,
-    item_setting: ItemSetting,
-    is_clear: bool,
+    pub fans: SettingFan,
+    pub fan_number: usize,
+    pub item_setting: ItemSetting,
+    pub is_clear: bool,
+    prev: u8,
     _phantom: core::marker::PhantomData<(DT, E)>,
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for SettingScreen<DT, E> {
+impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Rc<RwLock<SettingScreen<DT, E>>> {
     async fn draw_init(&mut self, display: &mut DT) {
-        self.draw(display).await;
+        if let Some(mut setting_screen) = self.try_write() {
+            setting_screen.draw(display).await;
+        }
     }
 
     fn draw_static(&mut self, display: &mut DT) {
-        if self.is_clear {
-            display.clear(BACKGROUND_COLOR).unwrap();
-            self.draw_grid(display);
-            self.draw_labels(display);
+        if let Some(setting_screen) = self.try_read() {
+            if setting_screen.is_clear {
+                display.clear(BACKGROUND_COLOR).unwrap();
+                setting_screen.draw_grid(display);
+                setting_screen.draw_labels(display);
+            }
         }
     }
 }
@@ -61,8 +70,29 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
             fan_number,
             item_setting,
             is_clear,
+            prev: 0,
             _phantom: core::marker::PhantomData,
         }
+    }
+
+    pub fn set_fans(&mut self, fans: SettingFan) -> &mut Self {
+        self.fans = fans;
+        self
+    }
+
+    pub fn set_fan_number(&mut self, fan_number: usize) -> &mut Self {
+        self.fan_number = fan_number;
+        self
+    }
+
+    pub fn set_item_setting(&mut self, item_setting: ItemSetting) -> &mut Self {
+        self.item_setting = item_setting;
+        self
+    }
+
+    pub fn set_clear(&mut self, is_clear: bool) -> &mut Self {
+        self.is_clear = is_clear;
+        self
     }
 
     pub fn draw_grid(&self, display: &mut DT) {
@@ -113,12 +143,14 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
         font.render(text.as_str(), Point::new(21, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_WHITE_SMOKE), display)
             .unwrap();
 
-        font.render("TEMP", Point::new(21, 13), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display).unwrap();
+        font.render("TEMP", Point::new(21, 13), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display)
+            .unwrap();
 
-        font.render("PWM", Point::new(106, 13), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display).unwrap();
+        font.render("PWM", Point::new(106, 13), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display)
+            .unwrap();
     }
 
-    pub async fn draw(&self, display: &mut DT) {
+    pub async fn draw(&mut self, display: &mut DT) {
         let mut style_segment = SevenSegmentStyleBuilder::new()
             .digit_size(Size::new(14, 22)) // digits are 10x20 pixels
             .digit_spacing(2) // 5px spacing between digits
@@ -127,6 +159,10 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
             .segment_color(Rgb565::RED) // active segments are green
             .inactive_segment_color(Rgb565::BLACK)
             .build();
+
+        info!("PREV: {}", self.prev);
+
+        self.prev = self.prev.wrapping_add(1);
 
         let mut temp_colors = [Some(Rgb565::RED); 4];
         let mut pwm_colors = [Some(Rgb565::GREEN); 4];
@@ -226,5 +262,20 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingScreen<DT, E> {
         write!(text, "{:03}", self.fans.thresold[3].pwm.data).unwrap();
         Text::new(&text, Point::new(97, 124), style_segment).draw(display).unwrap();
         Mono::delay(5.millis()).await;
+    }
+}
+
+// Обгортка навколо RefCell
+
+impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Default for SettingScreen<DT, E> {
+    fn default() -> Self {
+        Self {
+            fans: Default::default(),
+            fan_number: Default::default(),
+            item_setting: Default::default(),
+            is_clear: Default::default(),
+            prev: 0,
+            _phantom: Default::default(),
+        }
     }
 }

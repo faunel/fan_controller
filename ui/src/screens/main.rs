@@ -4,6 +4,8 @@ use crate::{
     BACKGROUND_COLOR,
 };
 use core::fmt::{Debug, Write};
+#[allow(unused)]
+use defmt::info;
 use eg_seven_segment::SevenSegmentStyleBuilder;
 use embedded_graphics::{
     pixelcolor::Rgb565,
@@ -14,6 +16,8 @@ use embedded_graphics::{
 };
 use heapless::String;
 use monotonic::prelude::*;
+use rclite::Rc;
+use spin::RwLock;
 use u8g2_fonts::{
     fonts,
     types::{FontColor, VerticalPosition},
@@ -26,19 +30,24 @@ pub struct MainScreen<DT, E> {
     temp: [u8; 4],
     rpm: [u16; 4],
     is_clear: bool,
+    pub counter: u32,
     _phantom: core::marker::PhantomData<(DT, E)>,
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for MainScreen<DT, E> {
+impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Rc<RwLock<MainScreen<DT, E>>> {
     async fn draw_init(&mut self, display: &mut DT) {
-        self.draw(display).await;
+        if let Some(main_screen) = self.try_read() {
+            main_screen.draw(display).await;
+        }
     }
 
     fn draw_static(&mut self, display: &mut DT) {
-        if self.is_clear {
-            display.clear(BACKGROUND_COLOR).unwrap();
-            self.draw_grid(display);
-            self.draw_labels(display);
+        if let Some(main_screen) = self.try_read() {
+            if main_screen.is_clear {
+                display.clear(BACKGROUND_COLOR).unwrap();
+                main_screen.draw_grid(display);
+                main_screen.draw_labels(display);
+            }
         }
     }
 }
@@ -50,8 +59,32 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
             temp,
             rpm,
             is_clear,
+            counter: 0,
             _phantom: core::marker::PhantomData,
         }
+    }
+
+    pub fn set_temp(&mut self, temp: [u8; 4]) -> &mut Self {
+        self.temp = temp;
+        self
+    }
+
+    pub fn set_rpm(&mut self, temp: [u16; 4]) -> &mut Self {
+        self.rpm = temp;
+        self
+    }
+
+    pub fn set_counter(&mut self) {
+        self.counter = self.counter.wrapping_add(1);
+    }
+
+    pub fn set_clear(&mut self, is_clear: bool) -> &mut Self {
+        self.is_clear = is_clear;
+        self
+    }
+
+    pub fn get_clear(&self) -> bool {
+        self.is_clear
     }
 
     pub fn draw_grid(&self, display: &mut DT) {
@@ -97,11 +130,14 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
     pub fn draw_labels(&self, display: &mut DT) {
         let font = FontRenderer::new::<fonts::u8g2_font_profont17_mr>();
 
-        font.render("FAN", Point::new(3, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display).unwrap();
+        font.render("FAN", Point::new(3, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
+            .unwrap();
 
-        font.render("TEMP", Point::new(41, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display).unwrap();
+        font.render("TEMP", Point::new(41, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
+            .unwrap();
 
-        font.render("RPM", Point::new(108, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display).unwrap();
+        font.render("RPM", Point::new(108, 0), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
+            .unwrap();
     }
 
     pub async fn draw(&self, display: &mut DT) {
@@ -197,5 +233,17 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> MainScreen<DT, E> {
         write!(text, "{:04}", self.rpm[3]).unwrap();
         Text::new(&text, Point::new(90, 124), style_segment).draw(display).unwrap();
         Mono::delay(4.millis()).await;
+    }
+}
+
+impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Default for MainScreen<DT, E> {
+    fn default() -> Self {
+        Self {
+            temp: Default::default(),
+            rpm: Default::default(),
+            is_clear: false,
+            counter: 0,
+            _phantom: core::marker::PhantomData,
+        }
     }
 }

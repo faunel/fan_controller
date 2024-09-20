@@ -2,12 +2,15 @@
 #![no_std]
 // #![allow(unused)]
 
-#[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, dispatchers = [SPI3, SPI4])]
+#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [SPI3, SPI4])]
 mod app {
     use async_button::prelude::*;
+    #[allow(unused)]
+    use defmt::info;
     use display_interface_spi::SPIInterface;
     use eeprom::eeprom::{Settings, EEPROM};
     use embassy_futures::select::{select3, Either3};
+    use embedded_alloc::LlffHeap as Heap;
     use embedded_hal_bus::spi::ExclusiveDevice;
     use measurements::{
         control::Control,
@@ -22,6 +25,13 @@ mod app {
     };
     use monotonic::prelude::*;
     use ntc::Ntc;
+    use rclite::Rc;
+    extern crate alloc;
+    use defmt_rtt as _;
+    use panic_probe as _;
+    use spin::rwlock::RwLock;
+    #[allow(unused)]
+    use stm32f4::stm32f401::DWT;
     use stm32f4::stm32f401::{ADC1, DMA2, TIM4, TIM5, TIM9};
     use stm32f4xx_hal::{
         adc::{
@@ -46,7 +56,6 @@ mod app {
         setting::SettingScreen,
         Menu,
     };
-    use {defmt_rtt as _, panic_probe as _};
 
     type DMATransfer = Transfer<Stream0<DMA2>, 0, Adc<ADC1>, PeripheralToMemory, &'static mut [u16; ADC_BUFFER]>;
 
@@ -84,12 +93,24 @@ mod app {
         adc: AdcMeasure,
         control: Control,
         iwdg: IndependentWatchdog,
+        main_screen: Rc<RwLock<MainScreen<Display, DisplayError>>>,
+        setting_screen: Rc<RwLock<SettingScreen<Display, DisplayError>>>,
     }
+
+    #[global_allocator]
+    static HEAP: Heap = Heap::empty();
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
+        {
+            use core::mem::MaybeUninit;
+            const HEAP_SIZE: usize = 256;
+            static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+            unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+        }
+
         let dp = cx.device;
-        let cp = cx.core;
+        let mut cp = cx.core;
 
         // Clock configuration
         let clocks = dp.RCC.constrain().cfgr.use_hse(25.MHz()).sysclk(80.MHz()).freeze();
@@ -104,8 +125,8 @@ mod app {
         // let mut delay = cp.SYST.delay(&clocks);
         let mut delay = dp.TIM10.delay_us(&clocks);
 
-        // cp.DCB.enable_trace();
-        // cp.DWT.enable_cycle_counter();
+        cp.DCB.enable_trace();
+        cp.DWT.enable_cycle_counter();
 
         // let start = DWT::cycle_count();
         // info!("{}", DWT::cycle_count() - start);
@@ -238,7 +259,7 @@ mod app {
         // Для тесту RPM
         let timer = Timer::new(dp.TIM1, &clocks);
         let channels: timer::ChannelBuilder<TIM1, 0> = timer::Channel1::new(gpioa.pa8);
-        let mut tim_1: timer::PwmHz<TIM1, timer::ChannelBuilder<TIM1, 0>> = timer.pwm_hz(channels, 10_000.Hz());
+        let mut tim_1: timer::PwmHz<TIM1, timer::ChannelBuilder<TIM1, 0>> = timer.pwm_hz(channels, 2100.Hz());
         tim_1.set_duty(timer::Channel::C1, tim_1.get_max_duty() / 2);
         tim_1.enable(timer::Channel::C1);
 
@@ -310,6 +331,8 @@ mod app {
                 adc: AdcMeasure::new(),
                 control: Control::new(tim_4),
                 iwdg: IndependentWatchdog::new(dp.IWDG),
+                main_screen: Rc::new(RwLock::new(MainScreen::default())),
+                setting_screen: Rc::new(RwLock::new(SettingScreen::default())),
             },
         )
     }
@@ -380,7 +403,7 @@ mod app {
 
     // Software task
     // Для відображення даних на дисплеї
-    #[task(local = [display, draw_static: bool = true], shared = [menu, data, settings, item_setting, is_clear], priority = 1)]
+    #[task(local = [display, main_screen, setting_screen], shared = [menu, data, settings, item_setting, is_clear], priority = 1)]
     async fn display_menu_task(cx: display_menu_task::Context) {
         // let display = unsafe { cx.shared.display.lock(|d| &mut *d.get()) };
         let display = cx.local.display;
@@ -390,25 +413,33 @@ mod app {
         screen.draw_init(display).await;
 
         loop {
+            // info!("HEAP free: {}", HEAP.free());
+            // info!("HEAP used: {}", HEAP.used()); // Output -> HEAP used: 112
             (&mut shared.menu, &mut shared.is_clear).lock(|menu, is_clear| {
                 match menu {
                     Menu::Main => {
-                        *cx.local.draw_static = true;
-                        // let data = shared.data.lock(|data| core::mem::replace(data, Data::new()));
-
                         shared.data.lock(|data| {
-                            screen = Screens::Main(MainScreen::new(*data.get_temp(), *data.get_rpm(), *is_clear));
+                            if let Some(mut main_screen) = cx.local.main_screen.try_write() {
+                                main_screen.set_clear(*is_clear).set_temp(*data.get_temp()).set_rpm(*data.get_rpm());
+                            }
                         });
+
+                        let start = DWT::cycle_count();
+
+                        screen = Screens::Main(Rc::clone(cx.local.main_screen));
+                        info!("{}", DWT::cycle_count() - start);
                     }
                     Menu::Fan(fan) => {
-                        *cx.local.draw_static = true;
                         (&mut shared.settings, &mut shared.item_setting).lock(|settings, item_setting| {
-                            screen = Screens::Setting(SettingScreen::new(
-                                settings.fans[*fan - 1].clone(),
-                                *fan,
-                                item_setting.clone(),
-                                *is_clear,
-                            ));
+                            if let Some(mut setting_screen) = cx.local.setting_screen.try_write() {
+                                setting_screen
+                                    .set_fans(settings.fans[*fan - 1].clone())
+                                    .set_fan_number(*fan)
+                                    .set_item_setting(item_setting.clone())
+                                    .set_clear(*is_clear);
+                            }
+
+                            screen = Screens::Setting(Rc::clone(cx.local.setting_screen));
                         });
                     }
                 }
@@ -637,4 +668,33 @@ mod app {
             rtic::export::wfi();
         }
     }
+
+    // #[task(binds=BusFault)]
+    // fn bus_fault(_cx: bus_fault::Context) {
+    //     panic!("BusFault");
+    // }
+
+    // #[task(binds=UsageFault)]
+    // fn usage_fault(_cx: usage_fault::Context) {
+    //     panic!("UsageFault");
+    // }
 }
+
+// #[inline(never)]
+// #[panic_handler]
+// fn panic(text: &PanicInfo) -> ! {
+
+//     let mut message = heapless::String::<256>::default();
+
+//     if write!(message, "{text}").is_err() {
+//         let _ = write!(message, "Could not format panic message");
+//     }
+
+//     info!("PANIC MESSAGE: {}", *message);
+
+//     loop {
+//         // add some side effect to prevent this from turning into a UDF instruction
+//         // see rust-lang/rust#28728 for details
+//         atomic::compiler_fence(Ordering::SeqCst);
+//     }
+// }
