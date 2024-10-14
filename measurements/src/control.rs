@@ -26,18 +26,19 @@ impl Control {
             let temp = data.get_temp();
             let current_temp = temp[ind_fan];
 
-            // Якщо температура менша ніж перший поріг, плавно зменшуємо PWM до нуля
-            if current_temp < fan.thresold[0].temp.data as u8 {
+            // Якщо температура менша ніж перший поріг, зменшуємо PWM до нуля
+            if current_temp < fan.thresold[0].temp.data {
                 self.current_pwm[ind_fan] = self.current_pwm[ind_fan].saturating_sub(1);
-            // Інакше температура більша за якийсь поріг. В циклі перевіряємо за який
+            // Температура в діапазоні від поточного діапазону до наступного
+            // В циклі перевіряємо в якому вона діапазоні
             } else {
                 for ind_thresold in 0..4 {
-                    let set_temp_from = fan.thresold[ind_thresold].temp.data as u8;
+                    let set_temp_from = fan.thresold[ind_thresold].temp.data;
 
-                    let set_temp_to = if ind_thresold <= 2 {
-                        fan.thresold[ind_thresold + 1].temp.data as u8
+                    let set_temp_to = if ind_thresold == 3 {
+                        u8::MAX as u16
                     } else {
-                        u8::MAX
+                        fan.thresold[ind_thresold + 1].temp.data
                     };
 
                     // current_temp >= set_temp_from && current_temp < set_temp_to

@@ -1,13 +1,13 @@
 
 [workspace]
-members = ["app", "ui", "eeprom", "measurements", "async-button", "monotonic", "ntc"]
+members = ["app", "async-button", "eeprom", "measurements", "monotonic", "ntc", "pwm", "ui"]
 default-members = ["app"]
 resolver = "2"
 
-[workspace.dependencies]# або відповідна версія
+[workspace.dependencies]
 cortex-m = {version = "0.7.7", features = ["critical-section-single-core"]}
 cortex-m-rt = "0.7.3"
-stm32f4 = {version = "0.15.1", features = ["rt"]}
+# stm32f4 = {version = "0.15.1", features = ["rt", "stm32f411"]}
 panic-probe = { version = "0.3.2", features = ["defmt", "print-defmt"] }
 rtic = {version = "2.1.1", features = [
     "cortex-m",
@@ -23,9 +23,9 @@ mipidsi = "0.8.0"
 embedded-hal = "1.0.0"
 embedded-hal-bus = "0.2.0"
 display-interface-spi = "0.5.0"
-rtic-monotonics = {version = "2.0.2", features = ["cortex-m-systick", "stm32f401ce"]}
+rtic-monotonics = {version = "2.0.2", features = ["cortex-m-systick", "stm32f411ce"]}
 fugit = "0.3.7"
-stm32f4xx-hal = {version = "0.21.0", features = ["stm32f401"]}
+stm32f4xx-hal = {version = "0.22.0", features = ["stm32f411"]}
 panic-semihosting = {version = "0.6.0", features = ["exit"]}
 heapless = { version = "0.8.0", features = ["ufmt"]}
 ufmt = "0.2.0"

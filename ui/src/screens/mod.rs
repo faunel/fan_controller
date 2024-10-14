@@ -1,13 +1,16 @@
+pub mod fan;
 pub mod main;
-pub mod setting;
+pub mod settings;
 pub mod start;
 
 use core::fmt::Debug;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::DrawTarget};
 use enum_dispatch::enum_dispatch;
+
+use fan::FanScreen;
 use main::MainScreen;
 use rclite::Rc;
-use setting::SettingScreen;
+use settings::SettingsScreen;
 use spin::RwLock;
 use start::StartScreen;
 
@@ -23,5 +26,6 @@ pub trait Screen<DT: DrawTarget, E: Debug> {
 pub enum Screens<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> {
     Start(StartScreen<DT, E>),
     Main(Rc<RwLock<MainScreen<DT, E>>>),
-    Setting(Rc<RwLock<SettingScreen<DT, E>>>),
+    Fan(Rc<RwLock<FanScreen<DT, E>>>),
+    Settings(Rc<RwLock<SettingsScreen<DT, E>>>),
 }

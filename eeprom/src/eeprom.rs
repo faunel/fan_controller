@@ -1,6 +1,6 @@
 // #![allow(unused)]
-
-use crate::default_settings::DEFAULT_SETTINGS;
+use crate::default_settings::{DEFAULT_SETTINGS_BL, DEFAULT_SETTINGS_FAN};
+use defmt::info;
 use eeprom24x::{Eeprom24x, SlaveAddr};
 use monotonic::prelude::*;
 use stm32f4xx_hal::{i2c::I2c, pac::I2C2};
@@ -10,6 +10,13 @@ type Eeprom = Eeprom24x<I2c<I2C2>, eeprom24x::page_size::B64, eeprom24x::addr_si
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub fans: [SettingFan; 4],
+    pub backlight: Backlight,
+}
+
+#[derive(Debug, Clone)]
+pub struct Backlight {
+    pub data: u16,
+    address: u32,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -51,6 +58,7 @@ impl Settings {
                 SettingFan::new(&mut current_address),
                 SettingFan::new(&mut current_address),
             ],
+            backlight: Backlight::new(&mut current_address),
         }
     }
 
@@ -119,6 +127,13 @@ impl Settings {
     }
 }
 
+impl Backlight {
+    pub fn new(current_address: &mut u32) -> Self {
+        *current_address += 16;
+        Backlight { data: 0, address: *current_address }
+    }
+}
+
 impl SettingFan {
     pub fn new(current_address: &mut u32) -> Self {
         SettingFan {
@@ -170,10 +185,10 @@ impl EEPROM {
 
     pub async fn default_settings(&mut self, settings: &mut Settings) {
         for fan in 0..4 {
-            for (thresold, data) in DEFAULT_SETTINGS.iter().enumerate() {
+            for (thresold, data) in DEFAULT_SETTINGS_FAN.iter().enumerate() {
                 #[allow(clippy::get_first)]
-                let temp = data.get(0).unwrap();
-                let pwm = data.get(1).unwrap();
+                let temp = &data[0];
+                let pwm = &data[1];
 
                 settings.fans[fan].thresold[thresold].temp.data = *temp;
                 self.save(&settings.fans[fan].thresold[thresold].temp.address, temp).await;
@@ -182,6 +197,8 @@ impl EEPROM {
                 self.save(&settings.fans[fan].thresold[thresold].pwm.address, pwm).await;
             }
         }
+        settings.backlight.data = DEFAULT_SETTINGS_BL;
+        self.save(&settings.backlight.address, &DEFAULT_SETTINGS_BL).await;
     }
 
     pub async fn load_settings(&mut self, settings: &mut Settings) {
@@ -191,6 +208,7 @@ impl EEPROM {
                 settings.fans[fan].thresold[thresold].pwm.data = self.read(&settings.fans[fan].thresold[thresold].pwm.address).await;
             }
         }
+        settings.backlight.data = self.read(&settings.backlight.address).await;
     }
 
     pub async fn save_all(&mut self, settings: &mut Settings) {
@@ -200,16 +218,17 @@ impl EEPROM {
                 let temp_data = &settings.fans[fan].thresold[thresold].temp.data;
                 if *temp_data != self.read(temp_address).await {
                     self.save(temp_address, temp_data).await;
-                    // info!("fan: {}, thresold: {}, data: {}", fan, thresold, temp_data);
+                    info!("fan: {}, thresold: {}, data: {}", fan, thresold, temp_data);
                 }
 
                 let pwm_address = &settings.fans[fan].thresold[thresold].pwm.address;
                 let pwm_data = &settings.fans[fan].thresold[thresold].pwm.data;
                 if *pwm_data != self.read(pwm_address).await {
                     self.save(pwm_address, pwm_data).await;
-                    // info!("fan: {}, thresold: {}, data: {}", fan, thresold, pwm_data);
+                    info!("fan: {}, thresold: {}, data: {}", fan, thresold, pwm_data);
                 }
             }
         }
+        self.save(&settings.backlight.address, &settings.backlight.data).await;
     }
 }

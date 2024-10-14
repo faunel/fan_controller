@@ -1,12 +1,17 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip STM32F401CEUx"
-#runner = "qemu-system-arm -cpu cortex-m3 -machine STM32F401CEUx -nographic -semihosting-config enable=on,target=native -kernel"
+runner = "probe-rs run --chip STM32F411CEUx"
+#runner = "qemu-system-arm -cpu cortex-m3 -machine STM32F411CEUx -nographic -semihosting-config enable=on,target=native -kernel"
 
 rustflags = [
   # LLD (shipped with the Rust toolchain) is used as the default linker
-  "-C", "link-arg=-Tlink.x",
-  "-C", "link-arg=-Tdefmt.x",
+  "-C", "link-arg=-Tlink.x",  # required by cortex-m-rt
+  "-C", "link-arg=-Tdefmt.x", # defmt logs
+  "-C", "linker=flip-link",   # stack overflow protection
+  # This is needed if your flash or ram addresses are not aligned to 0x10000 in memory.x
+  # See https://github.com/rust-embedded/cortex-m-quickstart/pull/95
   "-C", "link-arg=--nmagic",
+
+
   # "-C", "linker=rust-lld",
   # "-C", "link-arg=-Tstlog.x",
 

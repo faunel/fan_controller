@@ -5,6 +5,7 @@ use monotonic::prelude::*;
 
 const DELAY: MyDuration = MyDuration::millis(1);
 
+#[derive(Debug)]
 pub struct WaitPin<P> {
     pin: P,
 }

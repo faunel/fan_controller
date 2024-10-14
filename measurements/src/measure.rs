@@ -16,11 +16,22 @@ pub struct AdcMeasure {
 
 pub struct Data {
     ntc: Ntc,
-    temp: [u8; 4],
+    temp: [u16; 4],
     rpm: [u16; 4],
     filter_temp: [f64; 4],
     filter_rpm: [f64; 4],
-    smoothing_coefficient: f64,
+    temp_smoothing_coefficient: f64,
+    rpm_smoothing_coefficient: f64,
+}
+
+/// Конфігурація вимірювань
+pub struct MeasureConfig {
+    /// Вікно для фільтра температури
+    /// (Cкільки вимірів потрібно щоб значення було відфільтроване і дорівнювало вимірюваному)
+    pub temp_ema_window: u16,
+    /// Вікно для фільтра обертів вентилятора
+    /// (Cкільки вимірів потрібно щоб значення було відфільтроване і дорівнювало вимірюваному)
+    pub rpm_ema_window: u16,
 }
 
 impl ImpulsesRaw {
@@ -72,10 +83,11 @@ impl AdcMeasure {
 
 impl Data {
     #[must_use]
-    pub fn new(ema_window_size: u16, ntc: Ntc) -> Self {
+    pub fn new(ntc: Ntc, config: MeasureConfig) -> Self {
         Data {
             ntc,
-            smoothing_coefficient: 2.0 / (f64::from(ema_window_size) + 1.0),
+            temp_smoothing_coefficient: 2.0 / (f64::from(config.temp_ema_window) + 1.0),
+            rpm_smoothing_coefficient: 2.0 / (f64::from(config.rpm_ema_window) + 1.0),
             temp: [0; 4],
             rpm: [0; 4],
             filter_temp: [0.0; 4],
@@ -89,7 +101,7 @@ impl Data {
 
             self.temp[ind] = temperature.map_or(99, |temp| {
                 let temp = self.ema_temp(ind, temp);
-                let temp = (temp + 0.5) as u8;
+                let temp = (temp + 0.5) as u16;
 
                 if temp < 100 && temp > 0 {
                     temp
@@ -102,14 +114,14 @@ impl Data {
 
     pub fn set_rpm(&mut self, impulses: &[u16; 4]) {
         for (ind, imp) in impulses.iter().enumerate() {
-            let rpm = *imp / 2;
+            let rpm = *imp / 2 * 60;
             let rpm = self.ema_rpm(ind, rpm as f64);
 
             self.rpm[ind] = (rpm + 0.5) as u16;
         }
     }
 
-    pub fn get_temp(&self) -> &[u8; 4] {
+    pub fn get_temp(&self) -> &[u16; 4] {
         &self.temp
     }
 
@@ -118,11 +130,11 @@ impl Data {
     }
 
     fn ema_temp(&mut self, ind: usize, value: f64) -> f64 {
-        Self::ema(&mut self.filter_temp, ind, value, self.smoothing_coefficient)
+        Self::ema(&mut self.filter_temp, ind, value, self.temp_smoothing_coefficient)
     }
 
     fn ema_rpm(&mut self, ind: usize, value: f64) -> f64 {
-        Self::ema(&mut self.filter_rpm, ind, value, self.smoothing_coefficient)
+        Self::ema(&mut self.filter_rpm, ind, value, self.rpm_smoothing_coefficient)
     }
 
     fn ema(filter: &mut [f64; 4], ind: usize, value: f64, smoothing_coefficient: f64) -> f64 {

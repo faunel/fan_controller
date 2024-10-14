@@ -15,15 +15,13 @@ measurements = {path = "../measurements"}
 async-button = {path = "../async-button"}
 monotonic = {path = "../monotonic"}
 ntc = {path = "../ntc"}
+pwm = {path = "../pwm"}
 
 cortex-m.workspace = true
 embedded-hal.workspace = true
-stm32f4 = {workspace = true}
 stm32f4xx-hal = {workspace = true}
-heapless.workspace = true
-u8g2-fonts.workspace = true
 mipidsi.workspace = true
-rtic = { version = "2.1.1", features = ["thumbv7-backend"] }
+rtic.workspace = true
 embedded-hal-bus.workspace = true
 display-interface-spi.workspace = true
 defmt.workspace = true
@@ -33,3 +31,4 @@ embassy-futures.workspace = true
 rclite.workspace = true
 embedded-alloc.workspace = true
 spin.workspace = true
+eeprom24x.workspace = true

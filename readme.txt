@@ -27,7 +27,7 @@ cargo size --bin fan_controller --release -- -A
 .defmt: Секція, яка може містити дані для форматування виводу (наприклад, для бібліотеки defmt).
 
 Прошивка 
-cargo flash --chip stm32f401ccu6 --release 
+cargo flash --chip stm32f411ceu6 --release 
 
 Компіляція і прошивка
 cargo run --release

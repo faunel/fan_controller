@@ -1,15 +1,15 @@
+
 [package]
-name = "eeprom"
+name = "pwm"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "eeprom"
+name = "pwm"
 test = false
 bench = false
 
 [dependencies]
-monotonic = { path = "../monotonic" }
+monotonic = {path = "../monotonic"}
 stm32f4xx-hal.workspace = true
-eeprom24x.workspace = true
-defmt.workspace = true
+embedded-hal.workspace = true
