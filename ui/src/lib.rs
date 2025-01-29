@@ -11,5 +11,5 @@ pub use screens::main;
 pub enum Menu {
     Main,
     Fan(usize),
-    Settings(usize),
+    Settings,
 }

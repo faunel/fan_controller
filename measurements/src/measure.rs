@@ -6,7 +6,7 @@ use ntc::Ntc;
 pub struct ImpulsesRaw([u16; 4]);
 
 #[derive(Default)]
-pub struct ImpulsesComplete([u16; 4]);
+pub struct ImpulsesComplete([f32; 4]);
 
 #[derive(Default)]
 pub struct AdcMeasure {
@@ -22,6 +22,7 @@ pub struct Data {
     filter_rpm: [f64; 4],
     temp_smoothing_coefficient: f64,
     rpm_smoothing_coefficient: f64,
+    thresold: [u8; 4],
 }
 
 /// Конфігурація вимірювань
@@ -49,7 +50,7 @@ impl ImpulsesComplete {
         ImpulsesComplete::default()
     }
 
-    pub fn set(&mut self, index: usize, fan: &u16) {
+    pub fn set(&mut self, index: usize, fan: &f32) {
         self[index] = *fan;
     }
 }
@@ -92,6 +93,7 @@ impl Data {
             rpm: [0; 4],
             filter_temp: [0.0; 4],
             filter_rpm: [0.0; 4],
+            thresold: [0; 4],
         }
     }
 
@@ -112,13 +114,21 @@ impl Data {
         }
     }
 
-    pub fn set_rpm(&mut self, impulses: &[u16; 4]) {
+    pub fn set_rpm(&mut self, impulses: &[f32; 4]) {
         for (ind, imp) in impulses.iter().enumerate() {
-            let rpm = *imp / 2 * 60;
+            let rpm = *imp / 2.0 * 60.0;
             let rpm = self.ema_rpm(ind, rpm as f64);
 
             self.rpm[ind] = (rpm + 0.5) as u16;
         }
+    }
+
+    pub fn set_thresold(&mut self, thresold: &[u8; 4]) {
+        self.thresold = *thresold;
+    }
+
+    pub fn get_thresold(&self) -> &[u8; 4] {
+        &self.thresold
     }
 
     pub fn get_temp(&self) -> &[u16; 4] {
@@ -165,7 +175,7 @@ impl DerefMut for ImpulsesRaw {
 
 // Реалізація трейтів Deref та DerefMut
 impl Deref for ImpulsesComplete {
-    type Target = [u16; 4];
+    type Target = [f32; 4];
 
     fn deref(&self) -> &Self::Target {
         &self.0

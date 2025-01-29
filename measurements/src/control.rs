@@ -1,4 +1,5 @@
 use core::cmp::Ordering;
+// use defmt::info;
 use eeprom::eeprom::Settings;
 use stm32f4xx_hal::{hal::pwm::SetDutyCycle, pac::TIM4, timer};
 
@@ -21,10 +22,13 @@ impl Control {
         }
     }
 
-    pub fn run(&mut self, settings: &Settings, data: &Data) {
+    pub fn run(&mut self, settings: &Settings, data: &mut Data) {
+        let mut thresold: [u8; 4] = [0; 4];
         for (ind_fan, fan) in settings.fans.iter().enumerate() {
             let temp = data.get_temp();
-            let current_temp = temp[ind_fan];
+            let ntc_no = settings.ntc_no[ind_fan].data;
+
+            let current_temp = temp[usize::from(ntc_no) - 1];
 
             // Якщо температура менша ніж перший поріг, зменшуємо PWM до нуля
             if current_temp < fan.thresold[0].temp.data {
@@ -44,6 +48,7 @@ impl Control {
                     // current_temp >= set_temp_from && current_temp < set_temp_to
                     if (set_temp_from..set_temp_to).contains(&current_temp) {
                         let set_pwm = fan.thresold[ind_thresold].pwm.data as u8;
+                        thresold[ind_fan] = ind_thresold as u8 + 1;
 
                         match self.current_pwm[ind_fan].cmp(&set_pwm) {
                             // Якщо PWM потрібно більший чим поточний, збільшуємо його
@@ -61,7 +66,7 @@ impl Control {
                 match ind_fan {
                     0 => {
                         // info!("FAN: {}, PWM: {}", ind_fan, self.current_pwm[ind_fan]);
-                        self.timer.0.set_duty_cycle_percent(self.current_pwm[ind_fan]).unwrap()
+                        self.timer.0.set_duty_cycle_percent(self.current_pwm[ind_fan]).unwrap();
                     }
                     1 => {
                         // info!("FAN: {}, PWM: {}", ind_fan, self.current_pwm[ind_fan]);
@@ -74,5 +79,26 @@ impl Control {
                 self.old_pwm[ind_fan] = self.current_pwm[ind_fan];
             }
         }
+        data.set_thresold(&thresold);
+    }
+
+    pub fn get_duty_cycle_percent_ch1(&self) -> u16 {
+        let channel = &self.timer.0;
+        let duty = channel.get_duty();
+        let max_duty = channel.get_max_duty();
+        if duty == 0 {
+            return 0;
+        }
+        100 / (max_duty / duty)
+    }
+
+    pub fn get_duty_cycle_percent_ch2(&self) -> u16 {
+        let channel = &self.timer.1;
+        let duty = channel.get_duty();
+        let max_duty = channel.get_max_duty();
+        if duty == 0 {
+            return 0;
+        }
+        100 / (max_duty / duty)
     }
 }

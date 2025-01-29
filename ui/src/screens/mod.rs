@@ -15,17 +15,22 @@ use spin::RwLock;
 use start::StartScreen;
 
 #[allow(async_fn_in_trait)]
-#[enum_dispatch(Screens<DT, E>)]
-pub trait Screen<DT: DrawTarget, E: Debug> {
+#[enum_dispatch(Screens<DT>)]
+pub trait Screen<DT: DrawTarget<Error: Debug>> {
     async fn draw_init(&mut self, display: &mut DT);
     fn draw_static(&mut self, display: &mut DT);
 }
 
 #[allow(clippy::large_enum_variant)]
 #[enum_dispatch]
-pub enum Screens<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> {
-    Start(StartScreen<DT, E>),
-    Main(Rc<RwLock<MainScreen<DT, E>>>),
-    Fan(Rc<RwLock<FanScreen<DT, E>>>),
-    Settings(Rc<RwLock<SettingsScreen<DT, E>>>),
+pub enum Screens<DT: DrawTarget<Color = Rgb565, Error: Debug>> {
+    Start(StartScreen<DT>),
+    Main(Rc<RwLock<MainScreen<DT>>>),
+    Fan(Rc<RwLock<FanScreen<DT>>>),
+    Settings(Rc<RwLock<SettingsScreen<DT>>>),
+}
+
+#[derive(Debug, Clone)]
+pub enum ItemSetting {
+    Item(usize),
 }

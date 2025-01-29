@@ -1,8 +1,8 @@
 use crate::{screens::Screen, BACKGROUND_COLOR};
-use core::fmt::{Debug, Write};
+use core::fmt::{Write, Debug};
 #[allow(unused)]
 use defmt::info;
-use eeprom::eeprom::SettingFan;
+use eeprom::eeprom::{FanNtc, SettingFan};
 use eg_seven_segment::SevenSegmentStyleBuilder;
 use embedded_graphics::{
     pixelcolor::Rgb565,
@@ -24,10 +24,7 @@ use ufmt::uwrite;
 
 use crate::config::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 
-#[derive(Debug, Clone)]
-pub enum ItemSetting {
-    Item(usize),
-}
+use super::ItemSetting;
 
 impl Default for ItemSetting {
     fn default() -> Self {
@@ -36,8 +33,9 @@ impl Default for ItemSetting {
 }
 
 #[derive(Clone)]
-pub struct FanScreen<DT, E> {
+pub struct FanScreen<DT> {
     pub fans: SettingFan,
+    ntc_no: [FanNtc; 4],
     pub buffer: [u16; 8],
     pub fan_number: usize,
     pub item_setting: ItemSetting,
@@ -45,10 +43,10 @@ pub struct FanScreen<DT, E> {
     pub is_clear: bool,
     #[allow(unused)]
     prev: u8,
-    _phantom: core::marker::PhantomData<(DT, E)>,
+    _phantom: core::marker::PhantomData<DT>,
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Rc<RwLock<FanScreen<DT, E>>> {
+impl<DT: DrawTarget<Color = Rgb565, Error: Debug>> Screen<DT> for Rc<RwLock<FanScreen<DT>>> {
     async fn draw_init(&mut self, display: &mut DT) {
         if let Some(mut fan_screen) = self.try_write() {
             fan_screen.draw(display).await;
@@ -73,11 +71,16 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Rc<R
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> FanScreen<DT, E> {
+impl<DT: DrawTarget<Color = Rgb565>> FanScreen<DT> 
+where
+    DT: DrawTarget<Color = Rgb565>,
+    DT::Error: Debug,
+{
     #[must_use]
     pub fn new() -> Self {
         FanScreen {
             fans: Default::default(),
+            ntc_no: Default::default(),
             buffer: [0; 8],
             fan_number: Default::default(),
             item_setting: Default::default(),
@@ -103,6 +106,11 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> FanScreen<DT, E> {
         self
     }
 
+    pub fn set_ntc_no(&mut self, ntc_no: [FanNtc; 4]) -> &mut Self {
+        self.ntc_no = ntc_no;
+        self
+    }
+
     pub fn set_clear(&mut self, is_clear: bool) -> &mut Self {
         self.is_clear = is_clear;
         self
@@ -116,54 +124,45 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> FanScreen<DT, E> {
         let y = first_row_offset;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display)
-            .unwrap();
+            .draw(display).unwrap();
 
         let y = second_row_offset;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display)
-            .unwrap();
+            .draw(display).unwrap();
 
         let y = second_row_offset + other_row_height;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display)
-            .unwrap();
+            .draw(display).unwrap();
 
         let y = second_row_offset + other_row_height * 2;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display)
-            .unwrap();
+            .draw(display).unwrap();
 
         let y = second_row_offset + other_row_height * 3;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display)
-            .unwrap();
+            .draw(display).unwrap();
 
         // Вертикальні лінії
         let x = 140;
         Line::new(Point::new(x, first_row_offset), Point::new(x, DISPLAY_HEIGHT as i32 - 1))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display)
-            .unwrap();
+            .draw(display).unwrap();
     }
 
     pub fn draw_labels(&self, display: &mut DT) {
         let font = FontRenderer::new::<fonts::u8g2_font_profont22_mr>();
 
         let mut text: String<32> = String::new();
-        uwrite!(&mut text, "FAN {} SETTING", self.fan_number).unwrap();
-        font.render(text.as_str(), Point::new(60, 2), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_WHITE_SMOKE), display)
-            .unwrap();
+        uwrite!(&mut text, "SET. FAN {} -> NTC {}", self.fan_number, self.ntc_no[self.fan_number - 1].data).unwrap();
+        font.render(text.as_str(), Point::new(30, 2), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_WHITE_SMOKE), display).unwrap();
 
-        font.render("TEMP", Point::new(45, 22), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display)
-            .unwrap();
+        font.render("TEMP", Point::new(45, 22), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display).unwrap();
 
-        font.render("PWM", Point::new(185, 22), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display)
-            .unwrap();
+        font.render("PWM", Point::new(185, 22), VerticalPosition::Top, FontColor::Transparent(Rgb565::CSS_ORANGE), display).unwrap();
     }
 
     pub async fn draw(&mut self, display: &mut DT) {
@@ -310,10 +309,15 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> FanScreen<DT, E> {
         }
 
         self.prev_item_settings = item;
+
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Default for FanScreen<DT, E> {
+impl<DT: DrawTarget<Color = Rgb565>> Default for FanScreen<DT> 
+where
+    DT: DrawTarget<Color = Rgb565>,
+    DT::Error: Debug,
+{
     fn default() -> Self {
         Self::new()
     }

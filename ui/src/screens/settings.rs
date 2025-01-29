@@ -1,8 +1,9 @@
 use crate::screens::Screen;
 use crate::BACKGROUND_COLOR;
-use core::fmt::{Debug, Write};
+use core::fmt::{Write, Debug};
 #[allow(unused)]
 use defmt::info;
+use eeprom::eeprom::FanNtc;
 use eg_seven_segment::SevenSegmentStyleBuilder;
 use embedded_graphics::{
     pixelcolor::Rgb565,
@@ -19,17 +20,22 @@ use u8g2_fonts::{
     types::{FontColor, VerticalPosition},
     FontRenderer,
 };
+
+use super::ItemSetting;
 // use ufmt::uwrite;
 // use defmt::{info, println};
 
-pub struct SettingsScreen<DT, E> {
+pub struct SettingsScreen<DT> {
     backlight: u16,
+    ntc_no: [FanNtc; 4],
     buffer: [u16; 8],
     is_clear: bool,
-    _phantom: core::marker::PhantomData<(DT, E)>,
+    item_setting: ItemSetting,
+    prev_item_settings: usize,
+    _phantom: core::marker::PhantomData<DT>,
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Rc<RwLock<SettingsScreen<DT, E>>> {
+impl<DT: DrawTarget<Color = Rgb565, Error: Debug>> Screen<DT> for Rc<RwLock<SettingsScreen<DT>>> {
     async fn draw_init(&mut self, display: &mut DT) {
         if let Some(mut settings_screen) = self.try_write() {
             settings_screen.draw(display).await;
@@ -46,19 +52,35 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Screen<DT, E> for Rc<R
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingsScreen<DT, E> {
-    #[must_use]
+impl<DT: DrawTarget<Color = Rgb565>> SettingsScreen<DT> 
+where
+    DT: DrawTarget<Color = Rgb565>,
+    DT::Error: Debug,
+{
     pub fn new() -> Self {
         SettingsScreen {
             backlight: Default::default(),
+            ntc_no: Default::default(),
             buffer: Default::default(),
             is_clear: false,
+            item_setting: ItemSetting::default(),
+            prev_item_settings: 0,
             _phantom: core::marker::PhantomData,
         }
     }
 
+    pub fn set_item_setting(&mut self, item_setting: ItemSetting) -> &mut Self {
+        self.item_setting = item_setting;
+        self
+    }
+
     pub fn set_backlight(&mut self, backlight: u16) -> &mut Self {
         self.backlight = backlight;
+        self
+    }
+
+    pub fn set_ntc_no(&mut self, ntc_no: [FanNtc; 4]) -> &mut Self {
+        self.ntc_no = ntc_no;
         self
     }
 
@@ -80,8 +102,8 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingsScreen<DT, E> 
 
     pub async fn draw(&mut self, display: &mut DT) {
         let font = FontRenderer::new::<fonts::u8g2_font_profont29_mr>();
-        let style_segment = SevenSegmentStyleBuilder::new()
-            .digit_size(Size::new(20, 37)) // digits are 10x20 pixels
+        let mut style_segment = SevenSegmentStyleBuilder::new()
+            .digit_size(Size::new(17, 27)) // digits are 10x20 pixels
             .digit_spacing(4) // 5px spacing between digits
             .segment_width(4) // 5px wide segments
             .segment_color(Rgb565::GREEN) // active segments are green
@@ -90,22 +112,90 @@ impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> SettingsScreen<DT, E> 
 
         if self.is_clear {
             font.render("BACKLIGHT: ", Point::new(8, 27), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
+            .unwrap();
+            font.render("FAN 1 -> NTC", Point::new(8, 57), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
+                .unwrap();
+            font.render("FAN 2 -> NTC", Point::new(8, 87), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
+                .unwrap();
+            font.render("FAN 3 -> NTC", Point::new(8, 117), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
+                .unwrap();
+            font.render("FAN 4 -> NTC", Point::new(8, 147), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
                 .unwrap();
             Mono::delay(10.millis()).await;
         }
 
+        let mut settings_colors = [Some(Rgb565::GREEN); 5];
+
+        // self.item_setting = ItemSetting::Item(1);
+
+        match self.item_setting {
+            ItemSetting::Item(i) if (1..=5).contains(&i) => {
+                settings_colors[i - 1] = Some(Rgb565::RED);
+            }
+            _ => {}
+        }
+
+        let ItemSetting::Item(item) = self.item_setting;
+
         let data = self.backlight;
-        if self.buffer[0] != data || self.is_clear {
+        if self.buffer[0] != data || item != self.prev_item_settings || self.is_clear {
+            style_segment.segment_color = settings_colors[0];
             let mut text: String<2> = String::new();
             write!(text, "{:02}", data).unwrap();
-            Text::new(&text, Point::new(220, 55), style_segment).draw(display).unwrap();
+            Text::new(&text, Point::new(220, 50), style_segment).draw(display).unwrap();
             self.buffer[0] = data;
             Mono::delay(10.millis()).await;
         }
+
+        let data = self.ntc_no[0].data;
+        if self.buffer[1] != data || item != self.prev_item_settings || self.is_clear {
+            style_segment.segment_color = settings_colors[1];
+            let mut text: String<1> = String::new();
+            write!(text, "{:01}", data).unwrap();
+            Text::new(&text, Point::new(220, 80), style_segment).draw(display).unwrap();
+            self.buffer[1] = data;
+            Mono::delay(10.millis()).await;
+        }
+
+        let data = self.ntc_no[1].data;
+        if self.buffer[2] != data || item != self.prev_item_settings || self.is_clear {
+            style_segment.segment_color = settings_colors[2];
+            let mut text: String<1> = String::new();
+            write!(text, "{:01}", data).unwrap();
+            Text::new(&text, Point::new(220, 110), style_segment).draw(display).unwrap();
+            self.buffer[2] = data;
+            Mono::delay(10.millis()).await;
+        }
+
+        let data = self.ntc_no[2].data;
+        if self.buffer[3] != data || item != self.prev_item_settings || self.is_clear {
+            style_segment.segment_color = settings_colors[3];
+            let mut text: String<1> = String::new();
+            write!(text, "{:01}", data).unwrap();
+            Text::new(&text, Point::new(220, 140), style_segment).draw(display).unwrap();
+            self.buffer[3] = data;
+            Mono::delay(10.millis()).await;
+        }
+
+        let data = self.ntc_no[3].data;
+        if self.buffer[4] != data || item != self.prev_item_settings || self.is_clear {
+            style_segment.segment_color = settings_colors[4];
+            let mut text: String<1> = String::new();
+            write!(text, "{:01}", data).unwrap();
+            Text::new(&text, Point::new(220, 170), style_segment).draw(display).unwrap();
+            self.buffer[4] = data;
+            Mono::delay(10.millis()).await;
+        }
+
+        self.prev_item_settings = item;
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565, Error = E>, E: Debug> Default for SettingsScreen<DT, E> {
+impl<DT: DrawTarget<Color = Rgb565>> Default for SettingsScreen<DT> 
+where
+    DT: DrawTarget<Color = Rgb565>,
+    DT::Error: Debug,
+{
     fn default() -> Self {
         Self::new()
     }

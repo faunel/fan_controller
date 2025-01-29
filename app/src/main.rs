@@ -4,10 +4,13 @@
 
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [SPI3, SPI4])]
 mod app {
+    use core::u16;
+
+
     use async_button::prelude::*;
-    #[allow(unused)]
+    // #[allow(unused)]
     use defmt::info;
-    use display_interface_spi::SPIInterface;
+    // use display_interface_spi::SPIInterface;
     use eeprom::eeprom::{Settings, EEPROM};
     use embassy_futures::select::{select3, Either3};
     use embedded_alloc::LlffHeap as Heap;
@@ -18,21 +21,21 @@ mod app {
         measure::{AdcMeasure, Data, ImpulsesComplete, ImpulsesRaw, MeasureConfig},
         ADC_BUFFER,
     };
+    use mipidsi::interface::SpiInterface;
     use mipidsi::{
-        error::Error as DisplayError,
+        // interface::SpiError as DisplayError,
+        // s::Error as DisplayError,
         options::{ColorOrder, Orientation, Rotation},
         Builder,
     };
     use mipidsi::{models::ST7789, options::ColorInversion};
     use monotonic::prelude::*;
     use ntc::Ntc;
-    use pwm::{sowtware_pwm::SowtwarePwm, pwm_input::{PwmInputOne, PwmInputTwo}};
     use rclite::Rc;
     extern crate alloc;
     use defmt_rtt as _;
     use panic_probe as _;
     use spin::rwlock::RwLock;
-    use stm32f4xx_hal::gpio::{Analog, Input, Output, PinState, Pull};
     #[allow(unused)]
     use stm32f4xx_hal::pac::DWT;
     use stm32f4xx_hal::{
@@ -41,26 +44,35 @@ mod app {
             Adc,
         },
         dma::{config::DmaConfig, PeripheralToMemory, Stream0, StreamsTuple, Transfer},
-        gpio::{Edge, Pin, Speed},
+        gpio::{
+            Edge, Pin, Speed,
+        },
         hal::pwm::SetDutyCycle,
         i2c::{self, I2c},
-        pac::{ADC1, DMA2, TIM11, TIM2, TIM9},
+        pac::{ADC1, DMA2, TIM1, TIM11, TIM2, TIM5, TIM9},
         prelude::*,
         rcc::RccExt,
         spi::{Mode, NoMiso, Phase, Polarity, Spi},
-        timer::{self, CounterHz, Event, Flag, Timer},
+        timer::{self, Event, Flag, Timer},
         watchdog::IndependentWatchdog,
+    };
+    use stm32f4xx_hal::{
+        gpio::{Alternate, Analog, Input, Output, PinState, Pull},
+        timer::{CaptureChannel, CaptureHzManager, CounterHz, FTimer}
     };
     use ui::Display;
     use ui::{
-        fan::{FanScreen, ItemSetting},
-        screens::settings::SettingsScreen,
+        fan::FanScreen,
+        screens::{settings::SettingsScreen, ItemSetting},
     };
     use ui::{
         main::MainScreen,
         screens::{start::StartScreen, Screen, Screens},
         Menu,
     };
+
+    // use stm32ral::{gpio, rcc, tim5 as T5};
+    // use stm32ral::{modify_reg, read_reg, reset_reg, write_reg};
 
     type DMATransfer = Transfer<Stream0<DMA2>, 0, Adc<ADC1>, PeripheralToMemory, &'static mut [u16; ADC_BUFFER]>;
 
@@ -76,35 +88,32 @@ mod app {
         impulses_raw: ImpulsesRaw,
         impulses_complete: ImpulsesComplete,
         adc_buffer: Option<[u16; ADC_BUFFER]>,
-        pwm_input_one: PwmInputOne,
-        pwm_input_two: PwmInputTwo,
-        duty_cycle_fan1: u8,
-        duty_cycle_fan2: u8,
+        control: Control,
+        // pwm_input_one: PwmInputOne,
+        // pwm_input_two: PwmInputTwo,
+        // duty_cycle_fan1: u8,
+        // duty_cycle_fan2: u8,
     }
 
     #[local]
     struct Local {
-        display: Display,
         fan1_exti: Pin<'B', 1>,
         fan2_exti: Pin<'B', 0>,
         fan3_exti: Pin<'A', 7>,
         fan4_exti: Pin<'A', 6>,
-        tim_9: CounterHz<TIM9>,
+        tim_1: (timer::PwmChannel<TIM1, 0>, timer::PwmChannel<TIM1, 1>),
+        tim_9: timer::Counter<TIM9, 2000>,
         tim_11: CounterHz<TIM11>,
         buffer: Option<&'static mut [u16; ADC_BUFFER]>,
         btn_minus_async: WaitPin<Pin<'B', 2>>,
         btn_ok_async: WaitPin<Pin<'B', 14>>,
         btn_plus_async: WaitPin<Pin<'C', 13>>,
-        eeprom: EEPROM,
         adc: AdcMeasure,
-        control: Control,
+        eeprom: EEPROM,
         iwdg: IndependentWatchdog,
-        main_screen: Rc<RwLock<MainScreen<Display, DisplayError>>>,
-        fan_screen: Rc<RwLock<FanScreen<Display, DisplayError>>>,
-        settings_screen: Rc<RwLock<SettingsScreen<Display, DisplayError>>>,
         tim_2: timer::PwmChannel<TIM2, 0>,
-        sowtware_pwm1: SowtwarePwm<Pin<'A', 8, Output>>,
-        sowtware_pwm2: SowtwarePwm<Pin<'A', 9, Output>>,
+        tim5: CaptureHzManager<TIM5>,
+        tim5_ch1: timer::CaptureChannel<TIM5, 0>,
     }
 
     #[global_allocator]
@@ -115,8 +124,9 @@ mod app {
         // Heap config
         {
             use core::mem::MaybeUninit;
-            const HEAP_SIZE: usize = 256;
+            const HEAP_SIZE: usize = 512;
             static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+            #[allow(static_mut_refs)]
             unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
         }
 
@@ -144,6 +154,9 @@ mod app {
         let gpiob = dp.GPIOB.split();
         let gpioc = dp.GPIOC.split();
 
+        let mut syscfg = dp.SYSCFG.constrain();
+        let mut exti = dp.EXTI;
+
         let mut delay = dp.TIM10.delay_us(&clocks);
 
         // cp.DCB.enable_trace();
@@ -157,7 +170,7 @@ mod app {
         let sck = gpiob.pb13.into_alternate().speed(Speed::VeryHigh);
         let mosi = gpiob.pb15.into_alternate().speed(Speed::VeryHigh);
         let miso = NoMiso::new();
-        let rst = Output::new(gpiob.pb12, PinState::Low).speed(Speed::Medium);
+        let rst: Pin<'B', 12, Output> = Output::new(gpiob.pb12, PinState::Low).speed(Speed::Medium);
         let cs = Output::new(gpioa.pa15, PinState::Low).speed(Speed::Medium);
         let dc: Pin<'A', 10, Output> = Output::new(gpioa.pa10, PinState::Low).speed(Speed::VeryHigh);
 
@@ -177,15 +190,25 @@ mod app {
 
         // Buzzer pin
         let _buzzer: Pin<'B', 5, Output> = Output::new(gpiob.pb5, PinState::Low);
+
+        // Backlight pin
         let backlight = gpioa.pa5;
+
+        // Fan control PWM out pin
         let pwm4_ch1 = gpiob.pb6;
         let pwm4_ch2 = gpiob.pb7;
         let pwm4_ch3 = gpiob.pb8;
         let pwm4_ch4 = gpiob.pb9;
-        let pwm1_in = Input::new(gpioa.pa0, Pull::Down);
+        // let m: Pin<'A', 0, stm32f4xx_hal::gpio::Alternate<2>> = gpioa.pa0.into_alternate();
+        let pin_input_capture: Pin<'A', 0, Alternate<2>> = gpioa.pa0.into_alternate();
+
+        // let pwm1_in = Input::new(gpioa.pa0, Pull::Down);
         let pwm2_in = Input::new(gpiob.pb4, Pull::Down);
-        let pwm_fan_dummy1: Pin<'A', 8, Output> = Output::new(gpioa.pa8, PinState::Low);
-        let pwm_fan_dummy2: Pin<'A', 9, Output> = Output::new(gpioa.pa9, PinState::Low);
+        // let m = pwm1_in.make_interrupt_source(syscfg);
+
+        // Fan emulator PWM out pin
+        let fan_emulator_pwm1: Pin<'A', 8, Output> = Output::new(gpioa.pa8, PinState::Low);
+        let fan_emulator_pwm2: Pin<'A', 9, Output> = Output::new(gpioa.pa9, PinState::Low);
 
         // EXTI pin config
         let mut fan1_exti = Input::new(gpiob.pb1, Pull::Up);
@@ -194,10 +217,10 @@ mod app {
         let mut fan4_exti = Input::new(gpioa.pa6, Pull::Up);
 
         // ADC pin config
-        let fan1_adc = Analog::new(gpioa.pa1);
-        let fan2_adc = Analog::new(gpioa.pa2);
-        let fan3_adc = Analog::new(gpioa.pa3);
-        let fan4_adc = Analog::new(gpioa.pa4);
+        let fan1_adc = Analog::new(gpioa.pa4);
+        let fan2_adc = Analog::new(gpioa.pa3);
+        let fan3_adc = Analog::new(gpioa.pa2);
+        let fan4_adc = Analog::new(gpioa.pa1);
         //---------------------------- Finish GPIO config -----------------------
 
         //---------------------------- Start ADC config -----------------------
@@ -232,12 +255,10 @@ mod app {
         //---------------------------- Finish ADC config -----------------------
 
         // Sowtware PWM
-        let sowtware_pwm1 = SowtwarePwm::new(pwm_fan_dummy1);
-        let sowtware_pwm2 = SowtwarePwm::new(pwm_fan_dummy2);
+        // let sowtware_pwm1 = SowtwarePwm::new(pwm_fan_dummy1);
+        // let sowtware_pwm2 = SowtwarePwm::new(pwm_fan_dummy2);
 
         //---------------------------- Start hardware interrupts -----------------------
-        let mut syscfg = dp.SYSCFG.constrain();
-        let mut exti = dp.EXTI;
 
         // EXTI pb15 config. Частота вентилятора
         fan1_exti.make_interrupt_source(&mut syscfg);
@@ -259,16 +280,28 @@ mod app {
         fan4_exti.enable_interrupt(&mut exti);
         fan4_exti.trigger_on_edge(&mut exti, Edge::Falling);
 
+        // TIM1. For dummy fan
+        let timer = Timer::new(dp.TIM1, &clocks);
+        let (_, (ch1, ch2, ..)) = timer.pwm_hz(300.Hz());
+        let mut ch1 = ch1.with(fan_emulator_pwm1);
+        let mut ch2 = ch2.with(fan_emulator_pwm2);
+        ch1.set_duty_cycle_percent(50).unwrap();
+        ch2.set_duty_cycle_percent(50).unwrap();
+        ch1.enable();
+        ch2.enable();
+        let tim_1: (timer::PwmChannel<TIM1, 0>, timer::PwmChannel<TIM1, 1>) = (ch1, ch2);
+
         // TIM2. For backlight. PWM output config
         let timer = Timer::new(dp.TIM2, &clocks);
-        let (_, (ch1, ..)) = timer.pwm_hz(25.kHz());
+        let (_, (ch1, ..)) = timer.pwm_hz(167.Hz());
         let mut tim_2: timer::PwmChannel<TIM2, 0> = ch1.with(backlight);
-        tim_2.set_duty(0);
+        tim_2.set_duty(50);
         tim_2.enable();
 
         // TIM3. PWM input config
         let tim3 = Timer::new(dp.TIM3, &clocks);
-        let pwm_input_two = PwmInputTwo::new(tim3.pwm_input(10.kHz(), pwm2_in));
+        tim3.pwm_input(10.kHz(), pwm2_in);
+        // let pwm_input_two = PwmInputTwo::new(tim3.pwm_input(10.kHz(), pwm2_in));
 
         // TIM4. PWM для вентиляторів. PWM output config
         let timer = Timer::new(dp.TIM4, &clocks);
@@ -277,6 +310,8 @@ mod app {
         let mut ch2 = ch2.with(pwm4_ch2);
         let mut ch3 = ch3.with(pwm4_ch3);
         let mut ch4 = ch4.with(pwm4_ch4);
+        ch1.set_polarity(timer::Polarity::ActiveLow);
+        ch2.set_polarity(timer::Polarity::ActiveLow);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);
@@ -287,16 +322,62 @@ mod app {
         ch4.enable();
         let tim_4 = (ch1, ch2, ch3, ch4);
 
-        // TIM5. PWM input config
-        let tim5 = Timer::new(dp.TIM5, &clocks);
-        let timer_input = tim5.pwm_input(10.kHz(), pwm1_in);
-        let pwm_input_one = PwmInputOne::new(timer_input);
+        // TIM5
+        let (mut tim5, (tim5_ch1, ..)) = Timer::new(dp.TIM5, &clocks).capture_hz(1.MHz());
+        let mut tim5_ch1: CaptureChannel<TIM5, 0> = tim5_ch1.with(pin_input_capture);
+        // tim5_ch1.set_polarity(timer::Polarity::ActiveHigh);
+        tim5_ch1.set_prescaler(timer::CapturePrescaler::Eight);
+        // tim5_ch1.set_filter(timer::CaptureFilter::FckIntN8);
+
+        tim5_ch1.enable();
+        tim5.listen(Event::C1);
+
+        // ---------------- За допомогою регістрів ------------
+        // let mut tim5 = Timer::new(dp.TIM5, &clocks).counter_hz();
+        // let ral_tim5 = T5::TIM5::take().unwrap();
+        // unsafe { modify_reg!(rcc, RCC, APB1ENR, TIM5EN: Enabled) };
+        // modify_reg!(T5, ral_tim5, CCMR1, CC1S: 0b01);
+        // modify_reg!(T5, ral_tim5, CCER, CC1E: 1);
+        // modify_reg!(T5, ral_tim5, PSC, PSC: 3);
+        // modify_reg!(T5, ral_tim5, ARR, ARR: 0xFFFFFFFF);
+        // modify_reg!(T5, ral_tim5, CR1, URS: 1);
+        // write_reg!(T5, ral_tim5, EGR, UG: 1);
+        // modify_reg!(T5, ral_tim5, CR1, URS: 0);
+        // modify_reg!(T5, ral_tim5, CR1, CEN: 1);
+        // modify_reg!(T5, ral_tim5, DIER, CC1IE: Enabled);
+        // ---------------------------
+
+        // // Читання значення захоплення
+        // let capture_value = tim5.ccr1().read().ccr().bits();
+
+        // let mut tim5 = Timer::new(dp.TIM5, &clocks).counter_hz();
+        // tim5.listen(Event::C1);
+
+        // tim5.
+
+        // let (mng, (ch1, ..)) = tim5.pwm_hz(10.kHz());
+        // let ch1 = ch1.with(pwm1_in);
+        // mng.
+        // let mut timer = Timer::new(dp.TIM5, &clocks);
+        // let t = timer.counter_hz().configure(&clocks);
+
+        // timer.start(1.MHz()).unwrap();
+        // timer.set_master_mode(TIM1::c);
+        // timer.listen(Event::C1);
+
+        // let mut counter = timer.counter_hz();
+        // counter.start(1.MHz()).unwrap();
+        // counter.
+
+        // t.start(1.MHz());
+        // timer.listen(Event::C1);
+        // timer.
 
         // TIM9. Для вимірювання частоти вентиляторів. Update interrupt config
         // Викликати раз на секунду
-        let timer = Timer::new(dp.TIM9, &clocks);
-        let mut tim_9 = timer.counter_hz();
-        tim_9.start(1.Hz()).unwrap();
+        let mut tim_9 = FTimer::new(dp.TIM9, &clocks).counter();
+        // let mut tim_9 = timer.counter_hz();
+        tim_9.start(1000.millis()).unwrap();
         tim_9.listen(Event::Update);
 
         // TIM11. Для запуску АЦП. Update interrupt config
@@ -314,12 +395,14 @@ mod app {
         };
 
         // SPI interface
+        let spi_buffer: &'static mut [u8; 512] = cortex_m::singleton!(: [u8; 512] = [0; 512]).unwrap();
+
         let spi = Spi::new(dp.SPI2, (sck, miso, mosi), mode, 25.MHz(), &clocks);
         let device = ExclusiveDevice::new_no_delay(spi, cs).unwrap();
-        let interface = SPIInterface::new(device, dc);
+        let interface = SpiInterface::new(device, dc, spi_buffer);
 
         // Display config
-        let display = Builder::new(ST7789, interface)
+        let display: Display = Builder::new(ST7789, interface)
             .orientation(Orientation {
                 rotation: Rotation::Deg90,
                 mirrored: false,
@@ -333,22 +416,24 @@ mod app {
             .unwrap();
 
         let ntc = Ntc::default();
-        let measure_config = MeasureConfig {
-            temp_ema_window: 25,
-            rpm_ema_window: 25,
-        };
+        let measure_config = MeasureConfig { temp_ema_window: 25, rpm_ema_window: 1 };
         let data = Data::new(ntc, measure_config);
 
         // Tasks
-        eeprom_task::spawn(&mut btn_ok_async).unwrap();
-        button_task::spawn().unwrap();
+        eeprom_task::spawn(&mut btn_ok_async).ok();
         data_task::spawn().unwrap();
-        display_menu_task::spawn().unwrap();
-        backlight_task::spawn().unwrap();
-        pwm_fan_task::spawn().unwrap();
-        duty_cycle_task::spawn().unwrap();
-        software_pwm_fan1_task::spawn().unwrap();
-        software_pwm_fan2_task::spawn().unwrap();
+        // duty_cycle_task::spawn().unwrap();
+        // software_pwm_fan1_task::spawn().unwrap();
+        // software_pwm_fan2_task::spawn().unwrap();
+
+        // Ці задачі повинні бути створені після задачі "eeprom_task"
+        // Це пояснюється тим, що для цих задач структура settings повинна бути з даними, отриманими з EEPROM
+        {
+            display_menu_task::spawn(display).ok();
+            button_task::spawn().unwrap();
+            backlight_task::spawn().unwrap();
+            pwm_fan_task::spawn().unwrap();
+        }
 
         (
             Shared {
@@ -362,86 +447,95 @@ mod app {
                 impulses_raw: ImpulsesRaw::new(),
                 impulses_complete: ImpulsesComplete::new(),
                 adc_buffer: Some(adc_buffer),
-                pwm_input_one,
-                pwm_input_two,
-                duty_cycle_fan1: 200,
-                duty_cycle_fan2: 200,
+                control: Control::new(tim_4),
+                // pwm_input_one,
+                // pwm_input_two,
+                // duty_cycle_fan1: 200,
+                // duty_cycle_fan2: 200,
             },
             Local {
-                display,
                 fan1_exti,
                 fan2_exti,
                 fan3_exti,
                 fan4_exti,
+                tim_1,
                 tim_9,
                 tim_11,
                 buffer: adc_dma_buffer,
                 btn_minus_async,
                 btn_ok_async,
                 btn_plus_async,
-                eeprom: EEPROM::new(I2c::new(dp.I2C2, (scl, sda), i2c::Mode::standard(100.kHz()), &clocks)),
                 adc: AdcMeasure::new(),
-                control: Control::new(tim_4),
+                eeprom: EEPROM::new(I2c::new(dp.I2C2, (scl, sda), i2c::Mode::standard(100.kHz()), &clocks)),
                 iwdg: IndependentWatchdog::new(dp.IWDG),
-                main_screen: Rc::new(RwLock::new(MainScreen::default())),
-                fan_screen: Rc::new(RwLock::new(FanScreen::default())),
-                settings_screen: Rc::new(RwLock::new(SettingsScreen::default())),
                 tim_2,
-                sowtware_pwm1,
-                sowtware_pwm2,
+                tim5,
+                tim5_ch1,
             },
         )
     }
 
-    #[task(local = [sowtware_pwm1], shared = [duty_cycle_fan1], priority = 2)]
-    async fn software_pwm_fan1_task(mut cx: software_pwm_fan1_task::Context) {
-        loop {
-            let duty_cycle_fan1 = cx.shared.duty_cycle_fan1.lock(|duty_cycle_fan1| *duty_cycle_fan1);
+    // #[task(local = [sowtware_pwm1], shared = [duty_cycle_fan1], priority = 2)]
+    // async fn software_pwm_fan1_task(mut cx: software_pwm_fan1_task::Context) {
+    //     loop {
+    //         let duty_cycle_fan1 = cx.shared.duty_cycle_fan1.lock(|duty_cycle_fan1| *duty_cycle_fan1);
 
-            info!("{}", duty_cycle_fan1);
+    //         let (freq, duty_cycle) = if duty_cycle_fan1 < 3 {
+    //             (1, 0)
+    //         } else if duty_cycle_fan1 > 90 {
+    //             (200, 20)
+    //         } else {
+    //             (duty_cycle_fan1 * 2, 20)
+    //         };
+    //         cx.local.sowtware_pwm1.pwm_hz(freq, duty_cycle).await;
+    //     }
+    // }
 
-            let (freq, duty_cycle) = if duty_cycle_fan1 < 3 {
-                (1, 0)
-            } else if duty_cycle_fan1 > 90 {
-                (200, 20)
-            } else {
-                (duty_cycle_fan1 * 2, 20)
-            };
-            cx.local.sowtware_pwm1.pwm_hz(freq, duty_cycle).await;
-        }
-    }
+    // #[task(local = [sowtware_pwm2], shared = [duty_cycle_fan2], priority = 2)]
+    // async fn software_pwm_fan2_task(mut cx: software_pwm_fan2_task::Context) {
+    //     loop {
+    //         let duty_cycle_fan1 = cx.shared.duty_cycle_fan2.lock(|duty_cycle_fan1| *duty_cycle_fan1);
 
-    #[task(local = [sowtware_pwm2], shared = [duty_cycle_fan2], priority = 2)]
-    async fn software_pwm_fan2_task(mut cx: software_pwm_fan2_task::Context) {
-        loop {
-            let duty_cycle_fan1 = cx.shared.duty_cycle_fan2.lock(|duty_cycle_fan1| *duty_cycle_fan1);
+    //         if duty_cycle_fan1 < 3 {
+    //             cx.local.sowtware_pwm2.pwm_hz(1, 0).await;
+    //         } else if duty_cycle_fan1 > 90 {
+    //             cx.local.sowtware_pwm2.pwm_hz(200, 20).await;
+    //         } else {
+    //             cx.local.sowtware_pwm2.pwm_hz(duty_cycle_fan1 * 2, 20).await;
+    //         }
+    //     }
+    // }
 
-            if duty_cycle_fan1 < 3 {
-                cx.local.sowtware_pwm2.pwm_hz(1, 0).await;
-            } else if duty_cycle_fan1 > 90 {
-                cx.local.sowtware_pwm2.pwm_hz(200, 20).await;
-            } else {
-                cx.local.sowtware_pwm2.pwm_hz(duty_cycle_fan1 * 2, 20).await;
-            }
-        }
-    }
+    // #[task(shared = [pwm_input_one, pwm_input_two, duty_cycle_fan1, duty_cycle_fan2], priority = 2)]
+    // async fn duty_cycle_task(mut cx: duty_cycle_task::Context) {
+    //     loop {
+    //         // Отримання duty cycle для TIM5
+    //         (&mut cx.shared.pwm_input_one, &mut cx.shared.duty_cycle_fan1).lock(|pwm_input_one, duty_cycle_fan1| {
+    //             *duty_cycle_fan1 = pwm_input_one.get_duty_cycle();
+    //         });
 
-    #[task(shared = [pwm_input_one, pwm_input_two, duty_cycle_fan1, duty_cycle_fan2], priority = 2)]
-    async fn duty_cycle_task(mut cx: duty_cycle_task::Context) {
-        loop {
-            // Отримання duty cycle для TIM5
-            (&mut cx.shared.pwm_input_one, &mut cx.shared.duty_cycle_fan1).lock(|pwm_input_one, duty_cycle_fan1| {
-                *duty_cycle_fan1 = pwm_input_one.get_duty_cycle();
-            });
+    //         // Отримання duty cycle для TIM3
+    //         (&mut cx.shared.pwm_input_two, &mut cx.shared.duty_cycle_fan2).lock(|pwm_input_two, duty_cycle_fan2| {
+    //             *duty_cycle_fan2 = pwm_input_two.get_duty_cycle();
+    //         });
 
-            // Отримання duty cycle для TIM3
-            (&mut cx.shared.pwm_input_two, &mut cx.shared.duty_cycle_fan2).lock(|pwm_input_two, duty_cycle_fan2| {
-                *duty_cycle_fan2 = pwm_input_two.get_duty_cycle();
-            });
+    //         Mono::delay(100.millis()).await;
+    //     }
+    // }
 
-            Mono::delay(100.millis()).await;
-        }
-    }
+    // #[task(shared = [eeprom, settings], priority = 2)]
+    // async fn default_settings_task(mut cx: default_settings_task::Context, btn_ok_async: &mut WaitPin<Pin<'B', 14>>) {
+    //     if btn_ok_async.is_low().unwrap_or(false) {
+    //         Mono::delay(2000.millis()).await;
+    //         if btn_ok_async.is_low().unwrap_or(false) {
+    //             let mut s = cx.shared.settings.lock(move |settings| settings.clone());
+    //             cx.local.eeprom.default_settings(&mut s).await;
+    //             cx.shared.settings.lock(|settings| {
+    //                 *settings = s;
+    //             });
+    //         }
+    //     }
+    // }
 
     // Software task
     // Завантажує всі налаштування.
@@ -449,7 +543,7 @@ mod app {
     #[task(local = [eeprom], shared = [no_click_timer, settings, menu, is_clear, item_setting], priority = 2)]
     async fn eeprom_task(mut cx: eeprom_task::Context, btn_ok_async: &mut WaitPin<Pin<'B', 14>>) {
         if btn_ok_async.is_low().unwrap_or(false) {
-            Mono::delay(10.millis()).await;
+            Mono::delay(2000.millis()).await;
             if btn_ok_async.is_low().unwrap_or(false) {
                 let mut s = cx.shared.settings.lock(move |settings| settings.clone());
                 cx.local.eeprom.default_settings(&mut s).await;
@@ -464,6 +558,8 @@ mod app {
         cx.shared.settings.lock(|settings| {
             *settings = s;
         });
+
+        info!("load settings");
 
         loop {
             let s = cx.shared.no_click_timer.lock(|no_click_timer| {
@@ -499,13 +595,17 @@ mod app {
 
     // Software task
     // Для відображення даних на дисплеї
-    #[task(local = [display, main_screen, fan_screen, settings_screen], shared = [menu, data, settings, item_setting, is_clear], priority = 1)]
-    async fn display_menu_task(cx: display_menu_task::Context) {
+    #[task(shared = [menu, data, settings, item_setting, is_clear], priority = 1)]
+    async fn display_menu_task(cx: display_menu_task::Context, mut display: Display<'_>) {
+        let main_screen = Rc::new(RwLock::new(MainScreen::default()));
+        let fan_screen = Rc::new(RwLock::new(FanScreen::default()));
+        let settings_screen = Rc::new(RwLock::new(SettingsScreen::default()));
+
         // let display = unsafe { cx.shared.display.lock(|d| &mut *d.get()) };
-        let display = cx.local.display;
+        // let display = cx.local.display;
         let mut shared = cx.shared;
 
-        let mut screen: Screens<Display, DisplayError> = StartScreen::default().into();
+        let mut screen: Screens<Display> = StartScreen::default().into();
 
         loop {
             // info!("HEAP free: {}", HEAP.free());
@@ -513,38 +613,50 @@ mod app {
             (&mut shared.menu, &mut shared.is_clear).lock(|menu, is_clear| {
                 match menu {
                     Menu::Main => {
-                        shared.data.lock(|data| {
-                            if let Some(mut main_screen) = cx.local.main_screen.try_write() {
-                                main_screen.set_clear(*is_clear).set_temp(*data.get_temp()).set_rpm(*data.get_rpm());
+                        (&mut shared.data, &mut shared.settings).lock(|data, settings| {
+                            if let Some(mut main_screen) = main_screen.try_write() {
+                                main_screen
+                                    .set_clear(*is_clear)
+                                    .set_temp(*data.get_temp())
+                                    .set_rpm(*data.get_rpm())
+                                    .set_thresold(*data.get_thresold())
+                                    .set_ntc_no(settings.ntc_no.clone());
                             }
                         });
-                        screen = Screens::Main(Rc::clone(cx.local.main_screen));
+                        screen = Screens::Main(Rc::clone(&main_screen));
                     }
                     Menu::Fan(fan) => {
                         (&mut shared.settings, &mut shared.item_setting).lock(|settings, item_setting| {
-                            if let Some(mut fan_screen) = cx.local.fan_screen.try_write() {
+                            if let Some(mut fan_screen) = fan_screen.try_write() {
                                 fan_screen
                                     .set_fans(settings.fans[*fan - 1].clone())
                                     .set_fan_number(*fan)
+                                    .set_ntc_no(settings.ntc_no.clone())
                                     .set_item_setting(item_setting.clone())
                                     .set_clear(*is_clear);
                             }
-                            screen = Screens::Fan(Rc::clone(cx.local.fan_screen));
+                            screen = Screens::Fan(Rc::clone(&fan_screen));
                         });
                     }
-                    Menu::Settings(_) => {
-                        shared.settings.lock(|settings| {
-                            if let Some(mut settings_screen) = cx.local.settings_screen.try_write() {
-                                settings_screen.set_backlight(settings.backlight.data).set_clear(*is_clear);
+                    Menu::Settings => {
+                        (&mut shared.settings, &mut shared.item_setting).lock(|settings, item_setting| {
+                            if let Some(mut settings_screen) = settings_screen.try_write() {
+                                settings_screen
+                                    .set_backlight(settings.backlight.data)
+                                    .set_item_setting(item_setting.clone())
+                                    .set_ntc_no(settings.ntc_no.clone())
+                                    .set_clear(*is_clear);
                             }
-                            screen = Screens::Settings(Rc::clone(cx.local.settings_screen));
+                            screen = Screens::Settings(Rc::clone(&settings_screen));
                         });
                     }
                 }
                 *is_clear = false;
             });
-            screen.draw_static(display);
-            screen.draw_init(display).await;
+
+            screen.draw_static(&mut display);
+            screen.draw_init(&mut display).await;
+          
             Mono::delay(20.millis()).await;
         }
     }
@@ -569,11 +681,14 @@ mod app {
             if is_pressed_minus_plus {
                 Mono::delay(500.millis()).await;
                 if is_pressed_minus_plus {
-                    (&mut cx.shared.menu, &mut cx.shared.is_clear).lock(|menu, is_clear| match *menu {
-                        Menu::Settings(_) => {}
-                        _ => {
-                            *is_clear = true;
-                            *menu = Menu::Settings(1);
+                    (&mut cx.shared.menu, &mut cx.shared.is_clear, &mut cx.shared.item_setting).lock(|menu, is_clear, item_setting| {
+                        match *menu {
+                            Menu::Settings => {}
+                            _ => {
+                                *is_clear = true;
+                                *menu = Menu::Settings;
+                                *item_setting = ItemSetting::Item(1);
+                            }
                         }
                     });
                     prev_pressed_minus_plus = true;
@@ -597,10 +712,19 @@ mod app {
                                 ItemSetting::Item(item) => settings.decrement_logic(fan, item),
                             },
                             Menu::Main => {}
-                            Menu::Settings(_) => {
-                                if settings.backlight.data > 0 && !prev_pressed_minus_plus {
-                                    settings.backlight.data -= 1;
+                            Menu::Settings => {
+                                let ItemSetting::Item(item) = *item_setting;
+
+                                if item == 1 {
+                                    if settings.backlight.data > 0 && !prev_pressed_minus_plus {
+                                        settings.backlight.data -= 1;
+                                    }
+                                } else {
+                                    if settings.ntc_no[item - 2].data > 1 {
+                                        settings.ntc_no[item - 2].data -= 1;
+                                    }
                                 }
+
                                 prev_pressed_minus_plus = false;
                             }
                         },
@@ -610,7 +734,7 @@ mod app {
                                 ItemSetting::Item(item) => settings.decrement_logic(fan, item),
                             },
                             Menu::Main => {}
-                            Menu::Settings(_) => {
+                            Menu::Settings => {
                                 if settings.backlight.data > 0 {
                                     settings.backlight.data -= 1;
                                 }
@@ -619,22 +743,28 @@ mod app {
                     },
                     Either3::Second(ok) => match ok {
                         ButtonEvent::ShortPress(_) => {
-                            if let Menu::Fan(_) = menu {
-                                match item_setting {
-                                    ItemSetting::Item(mut item) => {
-                                        item += 1;
-                                        if item > 8 {
-                                            item = 1;
-                                        }
-                                        *item_setting = ItemSetting::Item(item);
+                            let ItemSetting::Item(mut item) = *item_setting;
+                            item += 1;
+                            match menu {
+                                Menu::Fan(_) => {
+                                    if item > 8 {
+                                        item = 1
                                     }
                                 }
+                                Menu::Settings => {
+                                    if item > 5 {
+                                        item = 1
+                                    }
+                                }
+                                _ => {}
                             }
+                            *item_setting = ItemSetting::Item(item);
                         }
                         ButtonEvent::LongPress => match menu {
                             Menu::Main => {
                                 *is_clear = true;
-                                *menu = Menu::Fan(1)
+                                *menu = Menu::Fan(1);
+                                *item_setting = ItemSetting::Item(1);
                             }
                             Menu::Fan(mut fan) => {
                                 *is_clear = true;
@@ -646,9 +776,10 @@ mod app {
                                     *menu = Menu::Main;
                                 }
                             }
-                            Menu::Settings(_) => {
+                            Menu::Settings => {
                                 *is_clear = true;
                                 *menu = Menu::Main;
+                                cx.shared.no_click_timer.lock(|no_click_timer| *no_click_timer = Some(0));
                             }
                         },
                         ButtonEvent::LongPressDuration(_) => {}
@@ -659,10 +790,19 @@ mod app {
                                 ItemSetting::Item(item) => settings.increment_logic(fan, item),
                             },
                             Menu::Main => {}
-                            Menu::Settings(_) => {
-                                if settings.backlight.data < 10 && !prev_pressed_minus_plus {
-                                    settings.backlight.data += 1;
+                            Menu::Settings => {
+                                let ItemSetting::Item(item) = *item_setting;
+
+                                if item == 1 {
+                                    if settings.backlight.data < 10 && !prev_pressed_minus_plus {
+                                        settings.backlight.data += 1
+                                    }
+                                } else {
+                                    if settings.ntc_no[item - 2].data < 4 {
+                                        settings.ntc_no[item - 2].data += 1;
+                                    }
                                 }
+
                                 prev_pressed_minus_plus = false;
                             }
                         },
@@ -672,7 +812,7 @@ mod app {
                                 ItemSetting::Item(item) => settings.increment_logic(fan, item),
                             },
                             Menu::Main => {}
-                            Menu::Settings(_) => {
+                            Menu::Settings => {
                                 if settings.backlight.data < 10 {
                                     settings.backlight.data += 1;
                                 }
@@ -700,14 +840,30 @@ mod app {
 
     // Sowtware task
     // Управління логікою на основі виміряних даних
-    #[task(local = [control], shared = [data, settings], priority = 2)]
+    #[task(shared = [control, data, settings], priority = 2)]
     async fn pwm_fan_task(mut cx: pwm_fan_task::Context) {
         loop {
-            (&mut cx.shared.data, &mut cx.shared.settings).lock(|data, settings| {
+            (&mut cx.shared.data, &mut cx.shared.settings, &mut cx.shared.control).lock(|data, settings, control| {
                 // let temp = data.get_temp();
-                cx.local.control.run(settings, data);
+                control.run(settings, data);
             });
-            Mono::delay(200.millis()).await;
+            Mono::delay(100.millis()).await;
+        }
+    }
+
+    #[task(local = [tim_1], shared = [control, data], priority = 2)]
+    async fn check_fan(mut cx: check_fan::Context) {
+        loop {
+            let (duty, rpm) = (&mut cx.shared.data, &mut cx.shared.control).lock(|data, control| {
+                ([control.get_duty_cycle_percent_ch1(), control.get_duty_cycle_percent_ch2()], [data.get_rpm()[0], data.get_rpm()[1]])
+            });
+            Mono::delay(5.secs()).await;
+            if duty[0] >= 20 && rpm[0] < 200 {
+                cx.local.tim_1.0.set_duty_cycle_fully_off().unwrap();
+            }
+            if duty[1] >= 20 && rpm[1] < 200 {
+                cx.local.tim_1.1.set_duty_cycle_fully_off().unwrap();
+            }
         }
     }
 
@@ -728,38 +884,75 @@ mod app {
 
     // Hardware task
     // TIM3. Отримання Duty cycle
-    #[task(binds = TIM3, shared = [pwm_input_two], priority = 3)]
-    fn tim_3(mut cx: tim_3::Context) {
-        cx.shared.pwm_input_two.lock(|pwm_input_two| {
-            pwm_input_two.set_dirty_duty_cycle();
-            pwm_input_two.timer.clear_all_flags();
-        });
-    }
+    // #[task(binds = TIM3, shared = [pwm_input_two], priority = 3)]
+    // fn tim_3(mut cx: tim_3::Context) {
+    //     cx.shared.pwm_input_two.lock(|pwm_input_two| {
+    //         pwm_input_two.set_dirty_duty_cycle();
+    //         pwm_input_two.timer.clear_all_flags();
+    //     });
+    // }
 
     // Hardware task
     // TIM5. Отримання Duty cycle
-    #[task(binds = TIM5, shared = [pwm_input_one], priority = 3)]
-    fn tim_5(mut cx: tim_5::Context) {
-        cx.shared.pwm_input_one.lock(|pwm_input_one| {
-            pwm_input_one.set_dirty_duty_cycle();
-            pwm_input_one.timer.clear_all_flags();
-        });
+    #[task(binds = TIM5, local = [tim5, tim5_ch1, prev_capture: u32 = 0, overflow_count: u32 = 0], priority = 3)]
+    fn tim_5(cx: tim_5::Context) {
+        if cx.local.tim5.flags().contains(Flag::C1) {
+            let timer_clock = cx.local.tim5.get_timer_clock();
+            let max_auto_reload = cx.local.tim5.get_max_auto_reload();
+            let current_capture = cx.local.tim5_ch1.get_capture();
+
+            // let delta = if current_capture >= *cx.local.prev_capture {
+            //     current_capture as u32 - *cx.local.prev_capture as u32 + *cx.local.overflow_count * u16::MAX as u32
+            // } else {
+            //     (u16::MAX as u32 - *cx.local.prev_capture as u32) + current_capture as u32 + (*cx.local.overflow_count - 1) * u16::MAX as u32
+            // };
+
+            let delta = if current_capture >= *cx.local.prev_capture {
+                current_capture - *cx.local.prev_capture
+            } else {
+                (max_auto_reload - *cx.local.prev_capture) + current_capture
+            };
+
+            let mut freq = timer_clock as f32 / delta as f32;
+
+            freq *= 8.0;
+
+            info!(
+                "freq: {}, diff: {}, timer_clock: {}, prev_capture: {}, current_capture: {}",
+                freq, delta, timer_clock, *cx.local.prev_capture, current_capture
+            );
+
+            *cx.local.prev_capture = current_capture;
+            *cx.local.overflow_count = 0;
+            cx.local.tim5.clear_flags(Flag::C1);
+        }
     }
 
     // Hardware task
     // TIM9. Для вимірювання частоти вентиляторів.
-    #[task(binds = TIM1_BRK_TIM9, local = [tim_9], shared = [impulses_raw, impulses_complete], priority = 3)]
+    #[task(binds = TIM1_BRK_TIM9, local = [tim_9, round: u8 = 0], shared = [impulses_raw, impulses_complete], priority = 3)]
     fn tim_9(mut cx: tim_9::Context) {
         if cx.local.tim_9.flags().contains(Flag::Update) {
             cx.local.tim_9.clear_flags(Flag::Update);
         }
 
-        cx.shared.impulses_raw.lock(|impulses_raw| {
-            for (ind, fan) in impulses_raw.iter_mut().enumerate() {
-                cx.shared.impulses_complete.lock(|impulses_complete| impulses_complete.set(ind, fan));
-                *fan = 0;
-            }
-        });
+        let samples: u8 = 4;
+
+        if *cx.local.round == samples {
+            *cx.local.round = 0;
+
+            cx.shared.impulses_raw.lock(|impulses_raw| {
+                for (ind, fan) in impulses_raw.iter_mut().enumerate() {
+                    cx.shared.impulses_complete.lock(|impulses_complete| {
+                        let fan_result = f32::from(*fan) / f32::from(samples);
+                        impulses_complete.set(ind, &fan_result)
+                    });
+                    *fan = 0;
+                }
+            });
+        }
+
+        *cx.local.round += 1;
     }
 
     // Hardware task
@@ -775,19 +968,36 @@ mod app {
         });
     }
 
-    // Hardware task
-    // Частота вентилятора. Викликається при надходженні сигналу на pin
-    #[task(binds = EXTI15_10, local = [fan1_exti, fan2_exti, fan3_exti, fan4_exti], shared = [impulses_raw], priority = 4)]
-    fn exti_15(mut cx: exti_15::Context) {
+    #[task(binds = EXTI1, local = [fan1_exti, duration: u32 = 0], shared = [impulses_raw], priority = 4)]
+    fn exti_1(mut cx: exti_1::Context) {
         cx.shared.impulses_raw.lock(|impulses_raw| {
             if cx.local.fan1_exti.check_interrupt() {
                 impulses_raw.add_raw(0);
                 cx.local.fan1_exti.clear_interrupt_pending_bit();
             }
+        });
+        // let now_1: fugit::Instant<u32, 1, 100_000> = Mono::now();
+        // now_1.ticks();
+
+        // let now_2 = Mono::now();
+        // let m = now_2.checked_duration_since(now_1);
+    }
+
+    #[task(binds = EXTI0, local = [fan2_exti], shared = [impulses_raw], priority = 4)]
+    fn exti_0(mut cx: exti_0::Context) {
+        cx.shared.impulses_raw.lock(|impulses_raw| {
             if cx.local.fan2_exti.check_interrupt() {
                 impulses_raw.add_raw(1);
                 cx.local.fan2_exti.clear_interrupt_pending_bit();
             }
+        });
+    }
+
+    // Hardware task
+    // Частота вентилятора. Викликається при надходженні сигналу на pin
+    #[task(binds = EXTI9_5, local = [fan3_exti, fan4_exti], shared = [impulses_raw], priority = 4)]
+    fn exti_15(mut cx: exti_15::Context) {
+        cx.shared.impulses_raw.lock(|impulses_raw| {
             if cx.local.fan3_exti.check_interrupt() {
                 impulses_raw.add_raw(2);
                 cx.local.fan3_exti.clear_interrupt_pending_bit();

@@ -1,20 +1,28 @@
 // #![allow(unused)]
-use crate::default_settings::{DEFAULT_SETTINGS_BL, DEFAULT_SETTINGS_FAN};
+use crate::default_settings::{DEFAULT_SETTINGS_BL, DEFAULT_SETTINGS_FAN, DEFAULT_SETTINGS_NTC_NO};
 use defmt::info;
 use eeprom24x::{Eeprom24x, SlaveAddr};
 use monotonic::prelude::*;
 use stm32f4xx_hal::{i2c::I2c, pac::I2C2};
 
+// type Eeprom = Eeprom24x<I2c<I2C2>, eeprom24x::page_size::B16, eeprom24x::addr_size::OneByte, eeprom24x::unique_serial::No>;
 type Eeprom = Eeprom24x<I2c<I2C2>, eeprom24x::page_size::B64, eeprom24x::addr_size::TwoBytes, eeprom24x::unique_serial::No>;
 
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub fans: [SettingFan; 4],
     pub backlight: Backlight,
+    pub ntc_no: [FanNtc; 4],
 }
 
 #[derive(Debug, Clone)]
 pub struct Backlight {
+    pub data: u16,
+    address: u32,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct FanNtc {
     pub data: u16,
     address: u32,
 }
@@ -59,9 +67,17 @@ impl Settings {
                 SettingFan::new(&mut current_address),
             ],
             backlight: Backlight::new(&mut current_address),
+            ntc_no: [
+                FanNtc::new(&mut current_address),
+                FanNtc::new(&mut current_address),
+                FanNtc::new(&mut current_address),
+                FanNtc::new(&mut current_address),
+            ],
         }
     }
+}
 
+impl Settings {
     pub fn increment_logic(&mut self, fan: &usize, selector: &usize) {
         let current_setting = self.get(fan, selector);
         let is_temperature = *selector % 2 != 0;
@@ -134,6 +150,13 @@ impl Backlight {
     }
 }
 
+impl FanNtc {
+    pub fn new(current_address: &mut u32) -> Self {
+        *current_address += 16;
+        FanNtc { data: 0, address: *current_address }
+    }
+}
+
 impl SettingFan {
     pub fn new(current_address: &mut u32) -> Self {
         SettingFan {
@@ -163,6 +186,7 @@ impl EEPROM {
     #[must_use]
     pub fn new(i2c: I2c<I2C2>) -> Self {
         EEPROM {
+            // eeprom: Eeprom24x::new_24x16(i2c, SlaveAddr::default()),
             eeprom: Eeprom24x::new_24x256(i2c, SlaveAddr::default()),
         }
     }
@@ -199,8 +223,14 @@ impl EEPROM {
         }
         settings.backlight.data = DEFAULT_SETTINGS_BL;
         self.save(&settings.backlight.address, &DEFAULT_SETTINGS_BL).await;
+
+        for (index, ntc_no) in DEFAULT_SETTINGS_NTC_NO.iter().enumerate() {
+            settings.ntc_no[index].data = *ntc_no;
+            self.save(&settings.ntc_no[index].address, ntc_no).await;
+        }
     }
 
+    // Load all settings
     pub async fn load_settings(&mut self, settings: &mut Settings) {
         for fan in 0..4 {
             for thresold in 0..4 {
@@ -209,8 +239,12 @@ impl EEPROM {
             }
         }
         settings.backlight.data = self.read(&settings.backlight.address).await;
+        for n in 0..4 {
+            settings.ntc_no[n].data = self.read(&settings.ntc_no[n].address).await;
+        }
     }
 
+    // Save all settings
     pub async fn save_all(&mut self, settings: &mut Settings) {
         for fan in 0..4 {
             for thresold in 0..4 {
@@ -229,6 +263,16 @@ impl EEPROM {
                 }
             }
         }
-        self.save(&settings.backlight.address, &settings.backlight.data).await;
+        let pwm_address = &settings.backlight.address;
+        let pwm_data = &settings.backlight.data;
+        if *pwm_data != self.read(pwm_address).await {
+            self.save(pwm_address, pwm_data).await;
+        }
+
+        for n in 0..4 {
+            let pwm_address = &settings.ntc_no[n].address;
+            let pwm_data = &settings.ntc_no[n].data;
+            self.save(pwm_address, pwm_data).await;
+        }
     }
 }

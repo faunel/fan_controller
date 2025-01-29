@@ -23,7 +23,7 @@ stm32f4xx-hal = {workspace = true}
 mipidsi.workspace = true
 rtic.workspace = true
 embedded-hal-bus.workspace = true
-display-interface-spi.workspace = true
+# display-interface-spi.workspace = true
 defmt.workspace = true
 defmt-rtt.workspace = true
 panic-probe = {workspace = true}
@@ -32,3 +32,5 @@ rclite.workspace = true
 embedded-alloc.workspace = true
 spin.workspace = true
 eeprom24x.workspace = true
+
+stm32ral.workspace = true

@@ -6,7 +6,7 @@ pub struct SowtwarePwm<Pin> {
     pin: Pin,
 }
 
-impl<Pin> SowtwarePwm<Pin> 
+impl<Pin> SowtwarePwm<Pin>
 where
     Pin: OutputPin,
 {
