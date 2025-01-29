@@ -3,7 +3,7 @@ use crate::{
     config::{DISPLAY_HEIGHT, DISPLAY_WIDTH},
     BACKGROUND_COLOR,
 };
-use core::fmt::{Write, Debug};
+use core::fmt::{Debug, Write};
 #[allow(unused)]
 use defmt::info;
 use eeprom::eeprom::FanNtc;
@@ -59,7 +59,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error: Debug>> Screen<DT> for Rc<RwLock<Main
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565>> MainScreen<DT> 
+impl<DT: DrawTarget<Color = Rgb565>> MainScreen<DT>
 where
     DT: DrawTarget<Color = Rgb565>,
     DT::Error: Debug,
@@ -118,38 +118,45 @@ where
         let y = first_row_height;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display).unwrap();
+            .draw(display)
+            .unwrap();
 
         let y = first_row_height + other_row_height;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display).unwrap();
+            .draw(display)
+            .unwrap();
 
         let y = first_row_height + other_row_height * 2;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display).unwrap();
+            .draw(display)
+            .unwrap();
 
         let y = first_row_height + other_row_height * 3;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display).unwrap();
+            .draw(display)
+            .unwrap();
 
         let y = 221;
         Line::new(Point::new(0, y), Point::new(DISPLAY_WIDTH as i32 - 1, y))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::CSS_DIM_GRAY, 1))
-            .draw(display).unwrap();
+            .draw(display)
+            .unwrap();
 
         // Вертикальні лінії
         let x = 66;
         Line::new(Point::new(x, 0), Point::new(x, DISPLAY_HEIGHT as i32 - 20))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display).unwrap();
+            .draw(display)
+            .unwrap();
 
         let x = 138;
         Line::new(Point::new(x, 0), Point::new(x, DISPLAY_HEIGHT as i32 - 20))
             .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(5, 10, 5), 1))
-            .draw(display).unwrap();
+            .draw(display)
+            .unwrap();
     }
 
     pub fn draw_labels(&self, display: &mut DT) {
@@ -376,7 +383,7 @@ where
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565>> Default for MainScreen<DT> 
+impl<DT: DrawTarget<Color = Rgb565>> Default for MainScreen<DT>
 where
     DT: DrawTarget<Color = Rgb565>,
     DT::Error: Debug,

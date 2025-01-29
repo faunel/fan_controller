@@ -4,9 +4,6 @@
 
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [SPI3, SPI4])]
 mod app {
-    use core::u16;
-
-
     use async_button::prelude::*;
     // #[allow(unused)]
     use defmt::info;
@@ -22,13 +19,13 @@ mod app {
         ADC_BUFFER,
     };
     use mipidsi::interface::SpiInterface;
+    use mipidsi::{models::ST7789, options::ColorInversion};
     use mipidsi::{
         // interface::SpiError as DisplayError,
         // s::Error as DisplayError,
         options::{ColorOrder, Orientation, Rotation},
         Builder,
     };
-    use mipidsi::{models::ST7789, options::ColorInversion};
     use monotonic::prelude::*;
     use ntc::Ntc;
     use rclite::Rc;
@@ -44,9 +41,7 @@ mod app {
             Adc,
         },
         dma::{config::DmaConfig, PeripheralToMemory, Stream0, StreamsTuple, Transfer},
-        gpio::{
-            Pin, Speed,
-        },
+        gpio::{Pin, Speed},
         hal::pwm::SetDutyCycle,
         i2c::{self, I2c},
         pac::{ADC1, DMA2, TIM1, TIM11, TIM5},
@@ -58,7 +53,7 @@ mod app {
     };
     use stm32f4xx_hal::{
         gpio::{Analog, Input, Output, PinState, Pull},
-        timer::{CaptureChannel, CaptureHzManager, CounterHz}
+        timer::{CaptureChannel, CaptureHzManager, CounterHz},
     };
     use ui::Display;
     use ui::{
@@ -119,7 +114,9 @@ mod app {
             const HEAP_SIZE: usize = 512;
             static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
             #[allow(static_mut_refs)]
-            unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+            unsafe {
+                HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE)
+            }
         }
 
         let dp = cx.device;
@@ -236,7 +233,6 @@ mod app {
         let transfer = Transfer::init_peripheral_to_memory(dma.0, adc, first_buffer, None, dma_config);
         //---------------------------- Finish ADC config -----------------------
 
-
         //---------------------------- Start hardware interrupts -----------------------
 
         // TIM1. For backlight. PWM output config
@@ -255,7 +251,6 @@ mod app {
         dummy_fan_2.set_duty_cycle_percent(50).unwrap();
         dummy_fan_1.enable();
         dummy_fan_2.enable();
-      
 
         // TIM4. PWM для вентиляторів. PWM output config
         let timer = Timer::new(dp.TIM4, &clocks);
@@ -265,7 +260,7 @@ mod app {
         let mut fan4_pwm = ch2.with(fan4_pwm_pin);
         let mut fan3_pwm = ch3.with(fan3_pwm_pin);
         let mut fan1_pwm = ch4.with(fan1_pwm_pin);
-       
+
         fan1_pwm.set_polarity(timer::Polarity::ActiveLow);
         fan2_pwm.set_polarity(timer::Polarity::ActiveLow);
         fan3_pwm.set_polarity(timer::Polarity::ActiveLow);
@@ -289,7 +284,7 @@ mod app {
         let mut fan2_rpm = tim5_ch2.with(fan2_rpm_pin);
         let mut fan3_rpm = tim5_ch3.with(fan3_rpm_pin);
         let mut fan1_rpm = tim5_ch4.with(fan1_rpm_pin);
-     
+
         // tim5_ch1.set_polarity(timer::Polarity::ActiveHigh);
         // tim5_ch1.set_prescaler(timer::CapturePrescaler::Eight);
         // tim5_ch1.set_filter(timer::CaptureFilter::FckIntN8);
@@ -304,8 +299,8 @@ mod app {
         fan3_rpm.enable();
         fan4_rpm.enable();
 
-        let rpm_channels: (CaptureChannel<TIM5, 3>, CaptureChannel<TIM5, 1>, CaptureChannel<TIM5, 2>, CaptureChannel<TIM5, 0>) = (fan1_rpm, fan2_rpm, fan3_rpm, fan4_rpm);
-
+        let rpm_channels: (CaptureChannel<TIM5, 3>, CaptureChannel<TIM5, 1>, CaptureChannel<TIM5, 2>, CaptureChannel<TIM5, 0>) =
+            (fan1_rpm, fan2_rpm, fan3_rpm, fan4_rpm);
 
         // ---------------- За допомогою регістрів ------------
         // let mut tim5 = Timer::new(dp.TIM5, &clocks).counter_hz();
@@ -434,7 +429,6 @@ mod app {
             },
         )
     }
-
 
     // #[task(shared = [eeprom, settings], priority = 2)]
     // async fn default_settings_task(mut cx: default_settings_task::Context, btn_ok_async: &mut WaitPin<Pin<'B', 14>>) {
@@ -569,7 +563,7 @@ mod app {
 
             screen.draw_static(&mut display);
             screen.draw_init(&mut display).await;
-          
+
             Mono::delay(20.millis()).await;
         }
     }
@@ -632,10 +626,8 @@ mod app {
                                     if settings.backlight.data > 0 && !prev_pressed_minus_plus {
                                         settings.backlight.data -= 1;
                                     }
-                                } else {
-                                    if settings.ntc_no[item - 2].data > 1 {
-                                        settings.ntc_no[item - 2].data -= 1;
-                                    }
+                                } else if settings.ntc_no[item - 2].data > 1 {
+                                    settings.ntc_no[item - 2].data -= 1;
                                 }
 
                                 prev_pressed_minus_plus = false;
@@ -710,10 +702,8 @@ mod app {
                                     if settings.backlight.data < 10 && !prev_pressed_minus_plus {
                                         settings.backlight.data += 1
                                     }
-                                } else {
-                                    if settings.ntc_no[item - 2].data < 4 {
-                                        settings.ntc_no[item - 2].data += 1;
-                                    }
+                                } else if settings.ntc_no[item - 2].data < 4 {
+                                    settings.ntc_no[item - 2].data += 1;
                                 }
 
                                 prev_pressed_minus_plus = false;
@@ -764,7 +754,6 @@ mod app {
         }
     }
 
-
     // Sowtware task
     // Запис виміряних даних в структуру
     #[task(local = [adc], shared = [adc_buffer, data], priority = 2)]
@@ -775,7 +764,7 @@ mod app {
                 let adc_values: &[u16; 4] = cx.local.adc.split_channels(buffer);
                 cx.shared.data.lock(|data| data.set_temp(adc_values));
             }
-          
+
             Mono::delay(20.millis()).await;
         }
     }
@@ -801,7 +790,7 @@ mod app {
 
             let freq = timer_clock as f32 / delta as f32;
 
-            fan_freq[0] = freq;            
+            fan_freq[0] = freq;
 
             defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
 
@@ -820,7 +809,7 @@ mod app {
 
             let freq = timer_clock as f32 / delta as f32;
 
-            fan_freq[1] = freq;            
+            fan_freq[1] = freq;
 
             defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
 
@@ -839,7 +828,7 @@ mod app {
 
             let freq = timer_clock as f32 / delta as f32;
 
-            fan_freq[2] = freq;            
+            fan_freq[2] = freq;
 
             defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
 
@@ -858,7 +847,7 @@ mod app {
 
             let freq = timer_clock as f32 / delta as f32;
 
-            fan_freq[3] = freq;            
+            fan_freq[3] = freq;
 
             defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
 

@@ -28,7 +28,6 @@ pub struct MeasureConfig {
     pub rpm_ema_window: u16,
 }
 
-
 impl AdcMeasure {
     pub fn new() -> Self {
         AdcMeasure::default()

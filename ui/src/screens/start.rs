@@ -3,7 +3,6 @@ use core::fmt::Debug;
 use crate::screens::Screen;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::DrawTarget};
 
-
 pub struct StartScreen<DT> {
     _phantom: core::marker::PhantomData<DT>,
 }

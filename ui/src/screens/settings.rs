@@ -1,6 +1,6 @@
 use crate::screens::Screen;
 use crate::BACKGROUND_COLOR;
-use core::fmt::{Write, Debug};
+use core::fmt::{Debug, Write};
 #[allow(unused)]
 use defmt::info;
 use eeprom::eeprom::FanNtc;
@@ -52,7 +52,7 @@ impl<DT: DrawTarget<Color = Rgb565, Error: Debug>> Screen<DT> for Rc<RwLock<Sett
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565>> SettingsScreen<DT> 
+impl<DT: DrawTarget<Color = Rgb565>> SettingsScreen<DT>
 where
     DT: DrawTarget<Color = Rgb565>,
     DT::Error: Debug,
@@ -112,7 +112,7 @@ where
 
         if self.is_clear {
             font.render("BACKLIGHT: ", Point::new(8, 27), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
-            .unwrap();
+                .unwrap();
             font.render("FAN 1 -> NTC", Point::new(8, 57), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
                 .unwrap();
             font.render("FAN 2 -> NTC", Point::new(8, 87), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
@@ -191,7 +191,7 @@ where
     }
 }
 
-impl<DT: DrawTarget<Color = Rgb565>> Default for SettingsScreen<DT> 
+impl<DT: DrawTarget<Color = Rgb565>> Default for SettingsScreen<DT>
 where
     DT: DrawTarget<Color = Rgb565>,
     DT::Error: Debug,
