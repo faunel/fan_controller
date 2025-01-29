@@ -1,12 +1,5 @@
 use crate::ADC_BUFFER;
-use core::ops::{Deref, DerefMut};
 use ntc::Ntc;
-
-#[derive(Default)]
-pub struct ImpulsesRaw([u16; 4]);
-
-#[derive(Default)]
-pub struct ImpulsesComplete([f32; 4]);
 
 #[derive(Default)]
 pub struct AdcMeasure {
@@ -35,25 +28,6 @@ pub struct MeasureConfig {
     pub rpm_ema_window: u16,
 }
 
-impl ImpulsesRaw {
-    pub fn new() -> Self {
-        ImpulsesRaw::default()
-    }
-
-    pub fn add_raw(&mut self, index: usize) {
-        self[index] = self[index].saturating_add(1);
-    }
-}
-
-impl ImpulsesComplete {
-    pub fn new() -> Self {
-        ImpulsesComplete::default()
-    }
-
-    pub fn set(&mut self, index: usize, fan: &f32) {
-        self[index] = *fan;
-    }
-}
 
 impl AdcMeasure {
     pub fn new() -> Self {
@@ -155,35 +129,5 @@ impl Data {
         filter[ind] += (value - filter[ind]) * smoothing_coefficient;
 
         filter[ind]
-    }
-}
-
-// Реалізація трейтів Deref та DerefMut
-impl Deref for ImpulsesRaw {
-    type Target = [u16; 4];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for ImpulsesRaw {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-// Реалізація трейтів Deref та DerefMut
-impl Deref for ImpulsesComplete {
-    type Target = [f32; 4];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for ImpulsesComplete {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }

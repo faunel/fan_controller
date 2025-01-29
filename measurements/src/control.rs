@@ -5,7 +5,7 @@ use stm32f4xx_hal::{hal::pwm::SetDutyCycle, pac::TIM4, timer};
 
 use crate::measure::Data;
 
-type TimerType = (timer::PwmChannel<TIM4, 0>, timer::PwmChannel<TIM4, 1>, timer::PwmChannel<TIM4, 2>, timer::PwmChannel<TIM4, 3>);
+type TimerType = (timer::PwmChannel<TIM4, 3>, timer::PwmChannel<TIM4, 0>, timer::PwmChannel<TIM4, 2>, timer::PwmChannel<TIM4, 1>);
 
 pub struct Control {
     timer: TimerType,
