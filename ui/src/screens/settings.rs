@@ -121,7 +121,7 @@ where
                 .unwrap();
             font.render("FAN 4 -> NTC", Point::new(8, 147), VerticalPosition::Top, FontColor::Transparent(Rgb565::WHITE), display)
                 .unwrap();
-            Mono::delay(10.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         let mut settings_colors = [Some(Rgb565::GREEN); 5];
@@ -144,7 +144,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(220, 50), style_segment).draw(display).unwrap();
             self.buffer[0] = data;
-            Mono::delay(10.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         let data = self.ntc_no[0].data;
@@ -154,7 +154,7 @@ where
             write!(text, "{:01}", data).unwrap();
             Text::new(&text, Point::new(220, 80), style_segment).draw(display).unwrap();
             self.buffer[1] = data;
-            Mono::delay(10.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         let data = self.ntc_no[1].data;
@@ -164,7 +164,7 @@ where
             write!(text, "{:01}", data).unwrap();
             Text::new(&text, Point::new(220, 110), style_segment).draw(display).unwrap();
             self.buffer[2] = data;
-            Mono::delay(10.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         let data = self.ntc_no[2].data;
@@ -174,7 +174,7 @@ where
             write!(text, "{:01}", data).unwrap();
             Text::new(&text, Point::new(220, 140), style_segment).draw(display).unwrap();
             self.buffer[3] = data;
-            Mono::delay(10.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         let data = self.ntc_no[3].data;
@@ -184,7 +184,7 @@ where
             write!(text, "{:01}", data).unwrap();
             Text::new(&text, Point::new(220, 170), style_segment).draw(display).unwrap();
             self.buffer[4] = data;
-            Mono::delay(10.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         self.prev_item_settings = item;

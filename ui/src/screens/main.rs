@@ -45,6 +45,8 @@ impl<DT: DrawTarget<Color = Rgb565, Error: Debug>> Screen<DT> for Rc<RwLock<Main
         if let Some(mut main_screen) = self.try_write() {
             main_screen.draw(display).await;
             main_screen.draw_thresold_main(display).await;
+        } else {
+            defmt::info!("LOCKED");
         }
     }
 
@@ -235,7 +237,7 @@ where
         Circle::with_center(Point::new(249, 228), 10)
             .draw_styled(&PrimitiveStyle::with_fill(styles[3][3]), display)
             .unwrap();
-        Mono::delay(4.millis()).await;
+        Mono::delay(1.millis()).await;
     }
 
     pub async fn draw(&mut self, display: &mut DT) {
@@ -252,7 +254,7 @@ where
         if self.is_clear {
             style_segment.segment_color = Some(Rgb565::WHITE);
             Text::new("1", Point::new(17, 69), style_segment).draw(display).unwrap();
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок перший. Температура
@@ -267,7 +269,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(72, 69), style_segment).draw(display).unwrap();
             self.buffer[0] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок перший. Оберти
@@ -278,14 +280,14 @@ where
             write!(text, "{:04}", data).unwrap();
             Text::new(&text, Point::new(146, 69), style_segment).draw(display).unwrap();
             self.buffer[1] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок другий. Номер
         if self.is_clear {
             style_segment.segment_color = Some(Rgb565::WHITE);
             Text::new("2", Point::new(17, 119), style_segment).draw(display).unwrap();
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок другий. Температура
@@ -300,7 +302,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(72, 119), style_segment).draw(display).unwrap();
             self.buffer[2] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок другий. Оберти
@@ -311,14 +313,14 @@ where
             write!(text, "{:04}", data).unwrap();
             Text::new(&text, Point::new(146, 119), style_segment).draw(display).unwrap();
             self.buffer[3] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок третій. Номер
         if self.is_clear {
             style_segment.segment_color = Some(Rgb565::WHITE);
             Text::new("3", Point::new(17, 169), style_segment).draw(display).unwrap();
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок третій. Температура
@@ -333,7 +335,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(72, 169), style_segment).draw(display).unwrap();
             self.buffer[4] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок третій. Оберти
@@ -344,14 +346,14 @@ where
             write!(text, "{:04}", data).unwrap();
             Text::new(&text, Point::new(146, 169), style_segment).draw(display).unwrap();
             self.buffer[5] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок четвертий. Номер
         if self.is_clear {
             style_segment.segment_color = Some(Rgb565::WHITE);
             Text::new("4", Point::new(17, 219), style_segment).draw(display).unwrap();
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок четвертий. Температура
@@ -366,7 +368,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(72, 219), style_segment).draw(display).unwrap();
             self.buffer[6] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок четвертий. Оберти
@@ -378,7 +380,7 @@ where
             write!(text, "{:04}", data).unwrap();
             Text::new(&text, Point::new(146, 219), style_segment).draw(display).unwrap();
             self.buffer[7] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
     }
 }

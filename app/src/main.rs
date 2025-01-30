@@ -5,6 +5,7 @@
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [SPI3, SPI4])]
 mod app {
     use async_button::prelude::*;
+    use cortex_m::asm;
     // #[allow(unused)]
     use defmt::info;
     // use display_interface_spi::SPIInterface;
@@ -66,8 +67,8 @@ mod app {
         Menu,
     };
 
-    // use stm32ral::{gpio, rcc, tim5 as T5};
-    // use stm32ral::{modify_reg, read_reg, reset_reg, write_reg};
+    use stm32ral::{gpio, rcc, spi::SPI1};
+    use stm32ral::{modify_reg, read_reg, reset_reg, write_reg};
 
     type DMATransfer = Transfer<Stream0<DMA2>, 0, Adc<ADC1>, PeripheralToMemory, &'static mut [u16; ADC_BUFFER]>;
 
@@ -285,22 +286,37 @@ mod app {
         let mut fan3_rpm = tim5_ch3.with(fan3_rpm_pin);
         let mut fan1_rpm = tim5_ch4.with(fan1_rpm_pin);
 
-        // tim5_ch1.set_polarity(timer::Polarity::ActiveHigh);
-        // tim5_ch1.set_prescaler(timer::CapturePrescaler::Eight);
-        // tim5_ch1.set_filter(timer::CaptureFilter::FckIntN8);
+        // Полярність імпульсів
+        fan1_rpm.set_polarity(timer::Polarity::ActiveHigh);
+        fan2_rpm.set_polarity(timer::Polarity::ActiveHigh);
+        fan3_rpm.set_polarity(timer::Polarity::ActiveHigh);
+        fan4_rpm.set_polarity(timer::Polarity::ActiveHigh);
 
+        // Дільник імпульсів
+        fan1_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+        fan2_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+        fan3_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+        fan4_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+
+        // Фільтр імпульсів
+        fan1_rpm.set_filter(timer::CaptureFilter::FckIntN8);
+        fan2_rpm.set_filter(timer::CaptureFilter::FckIntN8);
+        fan3_rpm.set_filter(timer::CaptureFilter::FckIntN8);
+        fan4_rpm.set_filter(timer::CaptureFilter::FckIntN8);
+
+        // Вмикаємо обробник переривання для input capture
         rpm_tim.listen(Event::C1);
         rpm_tim.listen(Event::C2);
         rpm_tim.listen(Event::C3);
         rpm_tim.listen(Event::C4);
 
+        // Вмикаємо канали таймера
         fan1_rpm.enable();
         fan2_rpm.enable();
         fan3_rpm.enable();
         fan4_rpm.enable();
 
-        let rpm_channels: (CaptureChannel<TIM5, 3>, CaptureChannel<TIM5, 1>, CaptureChannel<TIM5, 2>, CaptureChannel<TIM5, 0>) =
-            (fan1_rpm, fan2_rpm, fan3_rpm, fan4_rpm);
+        let rpm_channels = (fan1_rpm, fan2_rpm, fan3_rpm, fan4_rpm);
 
         // ---------------- За допомогою регістрів ------------
         // let mut tim5 = Timer::new(dp.TIM5, &clocks).counter_hz();
@@ -360,7 +376,7 @@ mod app {
         // SPI interface
         let spi_buffer: &'static mut [u8; 512] = cortex_m::singleton!(: [u8; 512] = [0; 512]).unwrap();
 
-        let spi = Spi::new(dp.SPI1, (sck_pin, miso_pin, mosi_pin), mode, 25.MHz(), &clocks);
+        let spi = Spi::new(dp.SPI1, (sck_pin, miso_pin, mosi_pin), mode, 48.MHz(), &clocks);
         let device = ExclusiveDevice::new_no_delay(spi, cs_pin).unwrap();
         let interface = SpiInterface::new(device, dc_pin, spi_buffer);
 
@@ -382,21 +398,21 @@ mod app {
         let measure_config = MeasureConfig { temp_ema_window: 25, rpm_ema_window: 1 };
         let data = Data::new(ntc, measure_config);
 
+
         // Tasks
-        eeprom_task::spawn(&mut btn_ok_async).ok();
+        eeprom_task::spawn(&mut btn_ok_async, display).ok();
         data_task::spawn().unwrap();
-        // duty_cycle_task::spawn().unwrap();
-        // software_pwm_fan1_task::spawn().unwrap();
-        // software_pwm_fan2_task::spawn().unwrap();
 
         // Ці задачі повинні бути створені після задачі "eeprom_task"
         // Це пояснюється тим, що для цих задач структура settings повинна бути з даними, отриманими з EEPROM
-        {
-            display_menu_task::spawn(display).ok();
-            button_task::spawn().unwrap();
-            backlight_task::spawn().unwrap();
-            // pwm_fan_task::spawn().unwrap();
-        }
+        
+        // display_menu_task::spawn(display).ok();
+        // button_task::spawn().unwrap();
+        // backlight_task::spawn().unwrap();
+        // pwm_fan_task::spawn().unwrap();
+          
+          
+        
 
         (
             Shared {
@@ -448,7 +464,7 @@ mod app {
     // Завантажує всі налаштування.
     // Зберігає налаштування при відсутності натискань кнопок за певний період при умові зміни будь якого параметру
     #[task(local = [eeprom], shared = [no_click_timer, settings, menu, is_clear, item_setting], priority = 2)]
-    async fn eeprom_task(mut cx: eeprom_task::Context, btn_ok_async: &mut WaitPin<Pin<'A', 9>>) {
+    async fn eeprom_task(mut cx: eeprom_task::Context, btn_ok_async: &mut WaitPin<Pin<'A', 9>>, display: Display) {
         if btn_ok_async.is_low().unwrap_or(false) {
             Mono::delay(2000.millis()).await;
             if btn_ok_async.is_low().unwrap_or(false) {
@@ -466,7 +482,10 @@ mod app {
             *settings = s;
         });
 
-        info!("load settings");
+        button_task::spawn().unwrap();
+        backlight_task::spawn().unwrap();
+        pwm_fan_task::spawn().unwrap();
+        display_menu_task::spawn(display).ok();
 
         loop {
             let s = cx.shared.no_click_timer.lock(|no_click_timer| {
@@ -503,7 +522,7 @@ mod app {
     // Software task
     // Для відображення даних на дисплеї
     #[task(shared = [menu, data, settings, item_setting, is_clear], priority = 1)]
-    async fn display_menu_task(cx: display_menu_task::Context, mut display: Display<'_>) {
+    async fn display_menu_task(cx: display_menu_task::Context, mut display: Display) {
         let main_screen = Rc::new(RwLock::new(MainScreen::default()));
         let fan_screen = Rc::new(RwLock::new(FanScreen::default()));
         let settings_screen = Rc::new(RwLock::new(SettingsScreen::default()));
@@ -564,7 +583,7 @@ mod app {
             screen.draw_static(&mut display);
             screen.draw_init(&mut display).await;
 
-            Mono::delay(20.millis()).await;
+            Mono::delay(10.millis()).await;
         }
     }
 
@@ -771,7 +790,7 @@ mod app {
 
     // Hardware task
     // TIM5. Для вимірювання частоти вентиляторів.
-    #[task(binds = TIM5, local = [rpm_tim, rpm_channels, prev_capture: u32 = 0], shared = [data], priority = 3)]
+    #[task(binds = TIM5, local = [rpm_tim, rpm_channels, prev_capture: u32 = 0, counter: u8 = 0], shared = [data], priority = 3)]
     fn tim5_interrupt(mut cx: tim5_interrupt::Context) {
         let timer_clock = cx.local.rpm_tim.get_timer_clock();
         let max_auto_reload = cx.local.rpm_tim.get_max_auto_reload();
@@ -792,8 +811,6 @@ mod app {
 
             fan_freq[0] = freq;
 
-            defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
-
             *cx.local.prev_capture = current_capture;
             cx.local.rpm_tim.clear_flags(Flag::C1);
         }
@@ -810,8 +827,6 @@ mod app {
             let freq = timer_clock as f32 / delta as f32;
 
             fan_freq[1] = freq;
-
-            defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
 
             *cx.local.prev_capture = current_capture;
             cx.local.rpm_tim.clear_flags(Flag::C2);
@@ -830,8 +845,6 @@ mod app {
 
             fan_freq[2] = freq;
 
-            defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
-
             *cx.local.prev_capture = current_capture;
             cx.local.rpm_tim.clear_flags(Flag::C3);
         }
@@ -849,13 +862,16 @@ mod app {
 
             fan_freq[3] = freq;
 
-            defmt::info!("Freq: {} Hz", freq); // Output = Freq: 893.00665 Hz
-
             *cx.local.prev_capture = current_capture;
             cx.local.rpm_tim.clear_flags(Flag::C4);
         }
 
-        cx.shared.data.lock(|data| data.set_rpm(&fan_freq));
+        *cx.local.counter += 1;
+
+        // if *cx.local.counter == 20 {
+            *cx.local.counter = 0;
+            cx.shared.data.lock(|data| data.set_rpm(&fan_freq));
+        // }
     }
 
     // Hardware task
@@ -889,7 +905,7 @@ mod app {
 
     #[idle(local = [iwdg])]
     fn idle(cx: idle::Context) -> ! {
-        cx.local.iwdg.start(3000.millis());
+        cx.local.iwdg.start(1000.millis());
 
         loop {
             cx.local.iwdg.feed();

@@ -1,12 +1,12 @@
 // #![allow(unused)]
 use crate::default_settings::{DEFAULT_SETTINGS_BL, DEFAULT_SETTINGS_FAN, DEFAULT_SETTINGS_NTC_NO};
 use defmt::info;
-use eeprom24x::{Eeprom24x, SlaveAddr};
+use eeprom24x::{addr_size::OneByte, page_size::B16, unique_serial::No, Eeprom24x, SlaveAddr};
 use monotonic::prelude::*;
 use stm32f4xx_hal::{i2c::I2c, pac::I2C2};
 
 // type Eeprom = Eeprom24x<I2c<I2C2>, eeprom24x::page_size::B16, eeprom24x::addr_size::OneByte, eeprom24x::unique_serial::No>;
-type Eeprom = Eeprom24x<I2c<I2C2>, eeprom24x::page_size::B64, eeprom24x::addr_size::TwoBytes, eeprom24x::unique_serial::No>;
+type Eeprom = Eeprom24x<I2c<I2C2>, B16, OneByte, No>;
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -186,8 +186,7 @@ impl EEPROM {
     #[must_use]
     pub fn new(i2c: I2c<I2C2>) -> Self {
         EEPROM {
-            // eeprom: Eeprom24x::new_24x16(i2c, SlaveAddr::default()),
-            eeprom: Eeprom24x::new_24x256(i2c, SlaveAddr::default()),
+            eeprom: Eeprom24x::new_24x16(i2c, SlaveAddr::default()),
         }
     }
 

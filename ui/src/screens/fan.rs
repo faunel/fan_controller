@@ -237,7 +237,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(42, 88), style_segment).draw(display).unwrap();
             self.buffer[0] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок перший. ШІМ
@@ -248,7 +248,7 @@ where
             write!(text, "{:03}", data).unwrap();
             Text::new(&text, Point::new(164, 88), style_segment).draw(display).unwrap();
             self.buffer[1] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок другий. Температура
@@ -259,7 +259,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(42, 138), style_segment).draw(display).unwrap();
             self.buffer[2] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок другий. ШІМ
@@ -270,7 +270,7 @@ where
             write!(text, "{:03}", data).unwrap();
             Text::new(&text, Point::new(164, 138), style_segment).draw(display).unwrap();
             self.buffer[3] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок третій. Температура
@@ -281,7 +281,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(42, 188), style_segment).draw(display).unwrap();
             self.buffer[4] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок третій. ШІМ
@@ -292,7 +292,7 @@ where
             write!(text, "{:03}", data).unwrap();
             Text::new(&text, Point::new(164, 188), style_segment).draw(display).unwrap();
             self.buffer[5] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок четвертий. Температура
@@ -303,7 +303,7 @@ where
             write!(text, "{:02}", data).unwrap();
             Text::new(&text, Point::new(42, 238), style_segment).draw(display).unwrap();
             self.buffer[6] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         // Рядок четвертий. ШІМ
@@ -314,7 +314,7 @@ where
             write!(text, "{:03}", data).unwrap();
             Text::new(&text, Point::new(164, 238), style_segment).draw(display).unwrap();
             self.buffer[7] = data;
-            Mono::delay(4.millis()).await;
+            Mono::delay(1.millis()).await;
         }
 
         self.prev_item_settings = item;

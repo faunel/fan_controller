@@ -89,7 +89,7 @@ impl Data {
 
     pub fn set_rpm(&mut self, impulses: &[f32; 4]) {
         for (ind, imp) in impulses.iter().enumerate() {
-            let rpm = *imp / 2.0 * 60.0;
+            let rpm = (*imp / 16.0) * 60.0;
             let rpm = self.ema_rpm(ind, rpm as f64);
 
             self.rpm[ind] = (rpm + 0.5) as u16;
