@@ -1,10 +1,23 @@
-use crate::ADC_BUFFER;
+use crate::{ADC_BUFFER, RPM_BUFFER};
 use ntc::Ntc;
 
 #[derive(Default)]
 pub struct AdcMeasure {
     buffer: [[u16; ADC_BUFFER / 4]; 4],
     data: [u16; 4],
+}
+
+#[derive(Default)]
+pub struct RpmData {
+    is_active: bool,
+    data: u16,
+}
+
+#[derive(Default)]
+pub struct RpmState {
+    index: usize,
+    frequency_buffer: f32,
+    previous_capture: u32,
 }
 
 pub struct Data {
@@ -87,12 +100,13 @@ impl Data {
         }
     }
 
-    pub fn set_rpm(&mut self, impulses: &[f32; 4]) {
-        for (ind, imp) in impulses.iter().enumerate() {
-            let rpm = (*imp / 16.0) * 60.0;
-            let rpm = self.ema_rpm(ind, rpm as f64);
-
-            self.rpm[ind] = (rpm + 0.5) as u16;
+    pub fn set_rpm(&mut self, rpm: &[u16; 4]) {
+        for (ind, rpm) in rpm.iter().enumerate() {
+            let rpm = self.ema_rpm(ind, *rpm as f64);
+            let rpm = (rpm + 0.5) as u16;
+            if rpm < 10_000 {
+                self.rpm[ind] = rpm;
+            }
         }
     }
 
@@ -128,5 +142,71 @@ impl Data {
         filter[ind] += (value - filter[ind]) * smoothing_coefficient;
 
         filter[ind]
+    }
+}
+
+impl RpmState {
+    pub fn new() -> [Self; 4] {
+        [RpmState::default(), RpmState::default(), RpmState::default(), RpmState::default()]
+    }
+
+    pub fn set_prev_capture(&mut self, previous_capture: u32) {
+        self.previous_capture = previous_capture;
+    }
+
+    pub fn get_prev_capture(&self) -> u32 {
+        self.previous_capture
+    }
+
+    pub fn calculate_rpm(&mut self, freq: f32) -> Option<u16> {
+        let index = self.index;
+        self.frequency_buffer += freq;
+
+        if index == RPM_BUFFER - 1 {
+            let rpm = ((self.frequency_buffer * 30.0) as usize / RPM_BUFFER) as u16;
+            self.frequency_buffer = 0.0;
+            self.index = 0;
+            return Some(rpm);
+        }
+
+        self.index += 1;
+
+        None
+    }
+
+    // fn calculate_rpm(&self, fan: usize) -> u16 {
+    //     let buffer =self.frequency_buffer[fan];
+    //     let sum: f32 = buffer.iter().sum();
+    //     (sum as usize / buffer.len()) as u16 * 30
+    // }
+}
+
+impl RpmData {
+    pub fn new() -> [Self; 4] {
+        [RpmData::default(), RpmData::default(), RpmData::default(), RpmData::default()]
+    }
+
+    pub fn set_rpm(&mut self, rpm: u16) {
+        self.data = rpm;
+    }
+
+    pub fn clear_rpm(&mut self) {
+        self.data = 0;
+    }
+
+    pub fn get_rpm(&self) -> u16 {
+        self.data
+    }
+
+    pub fn is_active_fan(&self) -> bool {
+        self.is_active
+    }
+
+    pub fn set_active_fan(&mut self) {
+        self.is_active = true;
+    }
+
+    pub fn clear_active_fans(&mut self) {
+        self.is_active = false;
     }
 }

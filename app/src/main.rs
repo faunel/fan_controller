@@ -2,10 +2,10 @@
 #![no_std]
 // #![allow(unused)]
 
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [SPI3, SPI4])]
+#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [SPI2, SPI3, SPI4])]
 mod app {
     use async_button::prelude::*;
-    use cortex_m::asm;
+    // use cortex_m::asm;
     // #[allow(unused)]
     use defmt::info;
     // use display_interface_spi::SPIInterface;
@@ -16,7 +16,7 @@ mod app {
     use embedded_hal_bus::spi::ExclusiveDevice;
     use measurements::{
         control::Control,
-        measure::{AdcMeasure, Data, MeasureConfig},
+        measure::{AdcMeasure, Data, MeasureConfig, RpmData, RpmState},
         ADC_BUFFER,
     };
     use mipidsi::interface::SpiInterface;
@@ -67,8 +67,8 @@ mod app {
         Menu,
     };
 
-    use stm32ral::{gpio, rcc, spi::SPI1};
-    use stm32ral::{modify_reg, read_reg, reset_reg, write_reg};
+    // use stm32ral::{gpio, rcc, spi::SPI1};
+    // use stm32ral::{modify_reg, read_reg, reset_reg, write_reg};
 
     type DMATransfer = Transfer<Stream0<DMA2>, 0, Adc<ADC1>, PeripheralToMemory, &'static mut [u16; ADC_BUFFER]>;
 
@@ -83,6 +83,7 @@ mod app {
         no_click_timer: Option<u8>,
         adc_buffer: Option<[u16; ADC_BUFFER]>,
         control: Control,
+        rpm_data: [RpmData; 4],
         // pwm_input_one: PwmInputOne,
         // pwm_input_two: PwmInputTwo,
         // duty_cycle_fan1: u8,
@@ -102,6 +103,7 @@ mod app {
         eeprom: EEPROM,
         iwdg: IndependentWatchdog,
         bl_tim: timer::PwmChannel<TIM1, 0>,
+        rpm_state: [RpmState; 4],
     }
 
     #[global_allocator]
@@ -262,10 +264,10 @@ mod app {
         let mut fan3_pwm = ch3.with(fan3_pwm_pin);
         let mut fan1_pwm = ch4.with(fan1_pwm_pin);
 
-        fan1_pwm.set_polarity(timer::Polarity::ActiveLow);
-        fan2_pwm.set_polarity(timer::Polarity::ActiveLow);
-        fan3_pwm.set_polarity(timer::Polarity::ActiveLow);
-        fan4_pwm.set_polarity(timer::Polarity::ActiveLow);
+        // fan1_pwm.set_polarity(timer::Polarity::ActiveLow);
+        // fan2_pwm.set_polarity(timer::Polarity::ActiveLow);
+        // fan3_pwm.set_polarity(timer::Polarity::ActiveLow);
+        // fan4_pwm.set_polarity(timer::Polarity::ActiveLow);
 
         fan1_pwm.set_duty(0);
         fan2_pwm.set_duty(0);
@@ -293,16 +295,16 @@ mod app {
         fan4_rpm.set_polarity(timer::Polarity::ActiveHigh);
 
         // Дільник імпульсів
-        fan1_rpm.set_prescaler(timer::CapturePrescaler::Eight);
-        fan2_rpm.set_prescaler(timer::CapturePrescaler::Eight);
-        fan3_rpm.set_prescaler(timer::CapturePrescaler::Eight);
-        fan4_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+        // fan1_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+        // fan2_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+        // fan3_rpm.set_prescaler(timer::CapturePrescaler::Eight);
+        // fan4_rpm.set_prescaler(timer::CapturePrescaler::Eight);
 
         // Фільтр імпульсів
-        fan1_rpm.set_filter(timer::CaptureFilter::FckIntN8);
-        fan2_rpm.set_filter(timer::CaptureFilter::FckIntN8);
-        fan3_rpm.set_filter(timer::CaptureFilter::FckIntN8);
-        fan4_rpm.set_filter(timer::CaptureFilter::FckIntN8);
+        fan1_rpm.set_filter(timer::CaptureFilter::FdtsDiv32N8);
+        fan2_rpm.set_filter(timer::CaptureFilter::FdtsDiv32N8);
+        fan3_rpm.set_filter(timer::CaptureFilter::FdtsDiv32N8);
+        fan4_rpm.set_filter(timer::CaptureFilter::FdtsDiv32N8);
 
         // Вмикаємо обробник переривання для input capture
         rpm_tim.listen(Event::C1);
@@ -395,24 +397,24 @@ mod app {
             .unwrap();
 
         let ntc = Ntc::default();
-        let measure_config = MeasureConfig { temp_ema_window: 25, rpm_ema_window: 1 };
+        let measure_config = MeasureConfig {
+            temp_ema_window: 20,
+            rpm_ema_window: 20,
+        };
         let data = Data::new(ntc, measure_config);
-
 
         // Tasks
         eeprom_task::spawn(&mut btn_ok_async, display).ok();
         data_task::spawn().unwrap();
+        clear_rpm_task::spawn().unwrap();
 
         // Ці задачі повинні бути створені після задачі "eeprom_task"
         // Це пояснюється тим, що для цих задач структура settings повинна бути з даними, отриманими з EEPROM
-        
+
         // display_menu_task::spawn(display).ok();
         // button_task::spawn().unwrap();
         // backlight_task::spawn().unwrap();
         // pwm_fan_task::spawn().unwrap();
-          
-          
-        
 
         (
             Shared {
@@ -425,6 +427,7 @@ mod app {
                 no_click_timer: None,
                 adc_buffer: Some(adc_buffer),
                 control: Control::new(pwm_tim),
+                rpm_data: RpmData::new(),
                 // pwm_input_one,
                 // pwm_input_two,
                 // duty_cycle_fan1: 200,
@@ -442,6 +445,7 @@ mod app {
                 eeprom: EEPROM::new(I2c::new(dp.I2C2, (scl_pin, sda_pin), i2c::Mode::standard(100.kHz()), &clocks)),
                 iwdg: IndependentWatchdog::new(dp.IWDG),
                 bl_tim,
+                rpm_state: RpmState::new(),
             },
         )
     }
@@ -459,6 +463,31 @@ mod app {
     //         }
     //     }
     // }
+
+    #[task(shared = [rpm_data], priority = 2)]
+    async fn clear_rpm_task(mut cx: clear_rpm_task::Context) {
+        loop {
+            cx.shared.rpm_data.lock(|rpm_data| {
+                rpm_data.iter_mut().for_each(|r| r.clear_active_fans());
+            });
+            Mono::delay(2000.millis()).await;
+
+            cx.shared.rpm_data.lock(|rpm_data| {
+                if !rpm_data[0].is_active_fan() {
+                    rpm_data[0].clear_rpm();
+                }
+                if !rpm_data[1].is_active_fan() {
+                    rpm_data[1].clear_rpm();
+                }
+                if !rpm_data[2].is_active_fan() {
+                    rpm_data[2].clear_rpm();
+                }
+                if !rpm_data[3].is_active_fan() {
+                    rpm_data[3].clear_rpm();
+                }
+            });
+        }
+    }
 
     // Software task
     // Завантажує всі налаштування.
@@ -775,7 +804,7 @@ mod app {
 
     // Sowtware task
     // Запис виміряних даних в структуру
-    #[task(local = [adc], shared = [adc_buffer, data], priority = 2)]
+    #[task(local = [adc], shared = [adc_buffer, data, rpm_data], priority = 3)]
     async fn data_task(mut cx: data_task::Context) {
         loop {
             let adc_buffer = cx.shared.adc_buffer.lock(|adc_buffer| adc_buffer.take());
@@ -784,94 +813,119 @@ mod app {
                 cx.shared.data.lock(|data| data.set_temp(adc_values));
             }
 
+            (&mut cx.shared.data, &mut cx.shared.rpm_data).lock(|data, rpm_data| {
+                let mut rpm: [u16; 4] = [0; 4];
+                for (i, data) in rpm_data.iter().enumerate() {
+                    rpm[i] = data.get_rpm();
+                }
+                data.set_rpm(&rpm)
+            });
+
             Mono::delay(20.millis()).await;
         }
     }
 
     // Hardware task
     // TIM5. Для вимірювання частоти вентиляторів.
-    #[task(binds = TIM5, local = [rpm_tim, rpm_channels, prev_capture: u32 = 0, counter: u8 = 0], shared = [data], priority = 3)]
+    #[task(binds = TIM5, local = [rpm_tim, rpm_channels, rpm_state], shared = [data, rpm_data], priority = 4)]
     fn tim5_interrupt(mut cx: tim5_interrupt::Context) {
         let timer_clock = cx.local.rpm_tim.get_timer_clock();
         let max_auto_reload = cx.local.rpm_tim.get_max_auto_reload();
 
         let (ch1, ch2, ch3, ch4) = cx.local.rpm_channels;
-        let mut fan_freq: [f32; 4] = [0.0; 4];
+
 
         if cx.local.rpm_tim.flags().contains(Flag::C1) {
-            let current_capture = ch1.get_capture();
+            let fan_number = 3;
+            let current_capture = ch4.get_capture();
+            let prev_capture = cx.local.rpm_state[fan_number].get_prev_capture();
 
-            let delta = if current_capture >= *cx.local.prev_capture {
-                current_capture - *cx.local.prev_capture
+            let delta = if current_capture >= prev_capture {
+                current_capture - prev_capture
             } else {
-                (max_auto_reload - *cx.local.prev_capture) + current_capture
+                (max_auto_reload - prev_capture) + current_capture
             };
 
             let freq = timer_clock as f32 / delta as f32;
-
-            fan_freq[0] = freq;
-
-            *cx.local.prev_capture = current_capture;
+            if let Some(rpm) = cx.local.rpm_state[fan_number].calculate_rpm(freq) {
+                info!("rpm: {}", rpm);
+                cx.shared.rpm_data.lock(|rpm_data| {
+                    rpm_data[fan_number].set_rpm(rpm);
+                    rpm_data[fan_number].set_active_fan();
+                });
+            }
+            cx.local.rpm_state[fan_number].set_prev_capture(current_capture);
             cx.local.rpm_tim.clear_flags(Flag::C1);
         }
 
         if cx.local.rpm_tim.flags().contains(Flag::C2) {
+            let fan_number = 1;
             let current_capture = ch2.get_capture();
+            let prev_capture = cx.local.rpm_state[fan_number].get_prev_capture();
 
-            let delta = if current_capture >= *cx.local.prev_capture {
-                current_capture - *cx.local.prev_capture
+            let delta = if current_capture >= prev_capture {
+                current_capture - prev_capture
             } else {
-                (max_auto_reload - *cx.local.prev_capture) + current_capture
+                (max_auto_reload - prev_capture) + current_capture
             };
 
             let freq = timer_clock as f32 / delta as f32;
-
-            fan_freq[1] = freq;
-
-            *cx.local.prev_capture = current_capture;
+            if let Some(rpm) = cx.local.rpm_state[fan_number].calculate_rpm(freq) {
+                info!("rpm: {}", rpm);
+                cx.shared.rpm_data.lock(|rpm_data| {
+                    rpm_data[fan_number].set_rpm(rpm);
+                    rpm_data[fan_number].set_active_fan();
+                });
+            }
+            cx.local.rpm_state[fan_number].set_prev_capture(current_capture);
             cx.local.rpm_tim.clear_flags(Flag::C2);
         }
 
         if cx.local.rpm_tim.flags().contains(Flag::C3) {
+            let fan_number = 2;
             let current_capture = ch3.get_capture();
+            let prev_capture = cx.local.rpm_state[fan_number].get_prev_capture();
 
-            let delta = if current_capture >= *cx.local.prev_capture {
-                current_capture - *cx.local.prev_capture
+            let delta = if current_capture >= prev_capture {
+                current_capture - prev_capture
             } else {
-                (max_auto_reload - *cx.local.prev_capture) + current_capture
+                (max_auto_reload - prev_capture) + current_capture
             };
 
             let freq = timer_clock as f32 / delta as f32;
-
-            fan_freq[2] = freq;
-
-            *cx.local.prev_capture = current_capture;
+            if let Some(rpm) = cx.local.rpm_state[fan_number].calculate_rpm(freq) {
+                info!("rpm: {}", rpm);
+                cx.shared.rpm_data.lock(|rpm_data| {
+                    rpm_data[fan_number].set_rpm(rpm);
+                    rpm_data[fan_number].set_active_fan();
+                });
+            }
+            cx.local.rpm_state[fan_number].set_prev_capture(current_capture);
             cx.local.rpm_tim.clear_flags(Flag::C3);
         }
 
         if cx.local.rpm_tim.flags().contains(Flag::C4) {
-            let current_capture = ch4.get_capture();
+            let fan_number = 0;
+            let current_capture = ch1.get_capture();
+            let prev_capture = cx.local.rpm_state[fan_number].get_prev_capture();
 
-            let delta = if current_capture >= *cx.local.prev_capture {
-                current_capture - *cx.local.prev_capture
+            let delta = if current_capture >= prev_capture {
+                current_capture - prev_capture
             } else {
-                (max_auto_reload - *cx.local.prev_capture) + current_capture
+                (max_auto_reload - prev_capture) + current_capture
             };
 
             let freq = timer_clock as f32 / delta as f32;
-
-            fan_freq[3] = freq;
-
-            *cx.local.prev_capture = current_capture;
+            if let Some(rpm) = cx.local.rpm_state[fan_number].calculate_rpm(freq) {
+                info!("rpm: {}", rpm);
+                cx.shared.rpm_data.lock(|rpm_data| {
+                    rpm_data[fan_number].set_rpm(rpm);
+                    rpm_data[fan_number].set_active_fan();
+                });
+            }
+            cx.local.rpm_state[fan_number].set_prev_capture(current_capture);
             cx.local.rpm_tim.clear_flags(Flag::C4);
         }
-
-        *cx.local.counter += 1;
-
-        // if *cx.local.counter == 20 {
-            *cx.local.counter = 0;
-            cx.shared.data.lock(|data| data.set_rpm(&fan_freq));
-        // }
     }
 
     // Hardware task
