@@ -266,7 +266,11 @@ where
         if self.buffer[0] != data || self.is_clear {
             style_segment.segment_color = Some(Rgb565::RED);
             let mut text: String<2> = String::new();
-            write!(text, "{:02}", data).unwrap();
+            if data < 100 {
+                write!(text, "{:02}", data).unwrap();
+            } else {
+                write!(text, "{}", "--").unwrap();
+            }
             Text::new(&text, Point::new(72, 69), style_segment).draw(display).unwrap();
             self.buffer[0] = data;
             Mono::delay(1.millis()).await;
@@ -299,7 +303,11 @@ where
         if self.buffer[2] != data || self.is_clear {
             style_segment.segment_color = Some(Rgb565::RED);
             let mut text: String<2> = String::new();
-            write!(text, "{:02}", data).unwrap();
+            if data < 100 {
+                write!(text, "{:02}", data).unwrap();
+            } else {
+                write!(text, "{}", "--").unwrap();
+            }
             Text::new(&text, Point::new(72, 119), style_segment).draw(display).unwrap();
             self.buffer[2] = data;
             Mono::delay(1.millis()).await;
@@ -332,7 +340,11 @@ where
         if self.buffer[4] != data || self.is_clear {
             style_segment.segment_color = Some(Rgb565::RED);
             let mut text: String<2> = String::new();
-            write!(text, "{:02}", data).unwrap();
+            if data < 100 {
+                write!(text, "{:02}", data).unwrap();
+            } else {
+                write!(text, "{}", "--").unwrap();
+            }
             Text::new(&text, Point::new(72, 169), style_segment).draw(display).unwrap();
             self.buffer[4] = data;
             Mono::delay(1.millis()).await;
@@ -365,7 +377,11 @@ where
         if self.buffer[6] != data || self.is_clear {
             style_segment.segment_color = Some(Rgb565::RED);
             let mut text: String<2> = String::new();
-            write!(text, "{:02}", data).unwrap();
+            if data < 100 {
+                write!(text, "{:02}", data).unwrap();
+            } else {
+                write!(text, "{}", "--").unwrap();
+            }
             Text::new(&text, Point::new(72, 219), style_segment).draw(display).unwrap();
             self.buffer[6] = data;
             Mono::delay(1.millis()).await;

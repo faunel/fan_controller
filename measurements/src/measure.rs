@@ -94,7 +94,7 @@ impl Data {
                 if temp < 100 && temp > 0 {
                     temp
                 } else {
-                    99
+                    100
                 }
             });
         }
