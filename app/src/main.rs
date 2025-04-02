@@ -45,11 +45,11 @@ mod app {
         gpio::{Pin, Speed},
         hal::pwm::SetDutyCycle,
         i2c::{self, I2c},
-        pac::{ADC1, DMA2, TIM1, TIM11, TIM5},
+        pac::{ADC1, DMA2, TIM1, TIM11, TIM3, TIM5},
         prelude::*,
         rcc::RccExt,
         spi::{Mode, NoMiso, Phase, Polarity, Spi},
-        timer::{self, Event, Flag, Timer},
+        timer::{self, Event, Flag, PwmChannel, Timer},
         watchdog::IndependentWatchdog,
     };
     use stm32f4xx_hal::{
@@ -104,6 +104,7 @@ mod app {
         iwdg: IndependentWatchdog,
         bl_tim: timer::PwmChannel<TIM1, 0>,
         rpm_state: [RpmState; 4],
+        dummy_fans: (PwmChannel<TIM3, 0>, PwmChannel<TIM3, 1>),
     }
 
     #[global_allocator]
@@ -240,7 +241,7 @@ mod app {
 
         // TIM1. For backlight. PWM output config
         let timer = Timer::new(dp.TIM1, &clocks);
-        let (_, (ch1, ..)) = timer.pwm_hz(167.Hz());
+        let (_, (ch1, ..)) = timer.pwm_hz(20.kHz());
         let mut bl_tim: timer::PwmChannel<TIM1, 0> = ch1.with(backlight_pin);
         bl_tim.set_duty(50);
         bl_tim.enable();
@@ -254,6 +255,8 @@ mod app {
         dummy_fan_2.set_duty_cycle_percent(50).unwrap();
         dummy_fan_1.enable();
         dummy_fan_2.enable();
+
+        let dummy_fans = (dummy_fan_1, dummy_fan_2);
 
         // TIM4. PWM для вентиляторів. PWM output config
         let timer = Timer::new(dp.TIM4, &clocks);
@@ -446,6 +449,7 @@ mod app {
                 iwdg: IndependentWatchdog::new(dp.IWDG),
                 bl_tim,
                 rpm_state: RpmState::new(),
+                dummy_fans,
             },
         )
     }
@@ -464,7 +468,7 @@ mod app {
     //     }
     // }
 
-    #[task(shared = [rpm_data], priority = 2)]
+    #[task(local = [dummy_fans], shared = [rpm_data, control], priority = 2)]
     async fn clear_rpm_task(mut cx: clear_rpm_task::Context) {
         loop {
             cx.shared.rpm_data.lock(|rpm_data| {
@@ -475,9 +479,25 @@ mod app {
             cx.shared.rpm_data.lock(|rpm_data| {
                 if !rpm_data[0].is_active_fan() {
                     rpm_data[0].clear_rpm();
+                    cx.shared.control.lock(|control| {
+                        let duty = control.get_duty_cycle_percent_ch1();
+                        if duty > 10 {
+                            cx.local.dummy_fans.0.disable();
+                        }
+                    });
+                } else {
+                    cx.local.dummy_fans.0.enable();
                 }
                 if !rpm_data[1].is_active_fan() {
                     rpm_data[1].clear_rpm();
+                    cx.shared.control.lock(|control| {
+                        let duty = control.get_duty_cycle_percent_ch2();
+                        if duty > 10 {
+                            cx.local.dummy_fans.1.disable();
+                        }
+                    });
+                } else {
+                    cx.local.dummy_fans.1.enable();
                 }
                 if !rpm_data[2].is_active_fan() {
                     rpm_data[2].clear_rpm();
@@ -790,7 +810,7 @@ mod app {
     }
 
     // Sowtware task
-    // Управління логікою на основі виміряних даних
+    // Управління вентиляторами на основі виміряних даних
     #[task(shared = [control, data, settings], priority = 2)]
     async fn pwm_fan_task(mut cx: pwm_fan_task::Context) {
         loop {
