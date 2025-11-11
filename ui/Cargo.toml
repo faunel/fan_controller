@@ -15,7 +15,7 @@ eeprom = { path = "../eeprom"}
 monotonic = { path = "../monotonic"}
 
 embedded-graphics.workspace = true
-heapless.workspace = true
+heapless = {workspace = true, features = ["ufmt"]}
 u8g2-fonts.workspace = true
 ufmt.workspace = true
 mipidsi.workspace = true
