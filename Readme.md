@@ -1,82 +1,130 @@
-<img src="images/photo.jpg" alt="Логотип" width="400"/>
+English | [Українська](README.uk.md)
 
-### Плата керування обертами вентиляторів за допомогою PWM
-(ШІМ) - широтно імпульсної модуляції.
-- Загальний струм може бути до 5 ампер, чого буде достатньо з великим запасом для будь який вентиляторів
-- В якості датчика температури використовується NTC (10 k)
+<img src="images/photo.jpg" alt="Fan Controller Board" width="400"/>
 
-- Підтримується до чотирьох вентиляторів 
-- Підтримується до чотирьох датчиків температури
-- Чотири ступеня регулювання вентиляторів, в залежності від температури
-- Одна додаткова швидкість за замовчуванням (це коли температура менше першого ступеня)
+# PWM Fan Controller Board
 
-- В меню налаштовується який датчик яким вентилятором чи групою вентиляторів керує.
+A control board for regulating fan speed using PWM (Pulse-Width Modulation).
 
-- Тобто можна зробити так:
-Один датчик керує всіма 4-ма вентиляторами, 
-або є два датчика, перший датчик керує двома вентиляторами,
-другий датчик керує іншими двома вентиляторами.
-Або один датчик керує одним вентилятором, а другий іншими трьома. 
-Тобто будь які комбінації допускаються
-- Відображення температури, обертів вентилятора
-і поточної швидкості (ступеня) по кожному вентилятору/датчику в головному меню
-- Плата розроблена для роботи разом з гібридним інвертором, тому там передбачений режим емуляції вентиляторів інвертора.
-Тобто навіть якщо налаштовано так, що вентилятори зупинені (не всі вентилятори це підтримують), то помилка в інверторі не виникне що вентилятор зупинений.
-Це реалізовано шляхом подачі імпульсів частотою 300 герц на сигнальний (жовтий) контакт роз'єму вентилятора, куди має підключатись штатний вентилятор інвертора.
-Ця частота відповідає 9000 обертам ветилятора.
-Два імпульса на оберт.
-300 / 2 * 60 = 9000
-- Якщо налаштовано так, що вентилятор має крутитись
-але за якоїсь причини це не так (не вставлений роз'єм, вентилятор заблокований якимось предметом чи несправний), то виникне помилка в інверторі і він вимкнеться, до усунення причини.
-Це зроблено навмисно, щоб запобігти перегріву інвертора
+## Overview
 
+This board is designed to control up to four fans based on temperature readings from up to four NTC thermistors.  
+It is intended, in particular, for use with hybrid inverters and includes an inverter fan emulation mode.
 
-### Команда для прошивки 
+- Total output current: up to **5 A**, sufficient with a large margin for typical fans
+- Temperature sensor type: **NTC 10 kΩ**
+- Up to **4 fans** supported
+- Up to **4 temperature sensors** supported
+- **4 fan speed levels** depending on temperature
+- **1 additional default speed** (used when temperature is below the first level)
+
+## Fan–Sensor Mapping
+
+Fan control logic is configurable in the menu:
+
+- Any sensor can control any fan or group of fans
+- All combinations are allowed
+
+Examples:
+
+- One sensor controls all 4 fans
+- Two sensors:  
+  - Sensor 1 controls fans 1–2  
+  - Sensor 2 controls fans 3–4
+- One sensor controls a single fan, another sensor controls the remaining three, etc.
+
+The main menu displays for each fan/sensor:
+
+- Temperature
+- Fan speed (RPM)
+- Current speed level (step)
+
+## Hybrid Inverter Integration
+
+The board is designed to work with a hybrid inverter and supports an **inverter fan emulation mode**.
+
+- If the configuration allows the fans to be stopped (note: not all fans support full stop),
+  the inverter will **not** generate a “fan stopped” error.
+- Emulation is implemented by generating pulses at **300 Hz** on the signal (yellow) wire
+  of the fan connector where the inverter’s original fan would normally be connected.
+
+This corresponds to **9000 RPM** of the fan:
+
+- 2 pulses per revolution  
+- Formula: `300 / 2 * 60 = 9000`
+
+### Fan Fault Handling
+
+If the configuration requires a fan to rotate but it does not (for example):
+
+- the connector is unplugged,
+- the fan is blocked by a foreign object,
+- the fan is defective,
+
+then the inverter will detect an error and shut down until the cause is eliminated.  
+This behaviour is intentional to prevent inverter overheating.
+
+## Firmware / Development
+
+### Flashing the firmware
+
+```bash
+cargo flash --chip stm32f411ceu6 --release
 ```
-cargo flash --chip stm32f411ceu6 --release 
-```
 
-### Компіляція. При цьому термінал активний і ми можемо бачити певний вивід повідомлень
-```
+### Build and run with active terminal output
+
+```bash
 cargo run --release
 ```
-### Компіляція і від'єднання терміналу
-```
+
+### Build and detach from terminal
+
+```bash
 cargo embed --release
 ```
 
-### Конвертація в hex
-```
+### Convert to HEX file
+
+```bash
 cargo-objcopy target/thumbv7em-none-eabihf/release/two --release -- -O ihex two.hex
 ```
 
-### Дизассемблер
-```
+### Disassembly
+
+```bash
 cargo objdump --bin two --release -- --disassemble --no-show-raw-insn --print-imm-hex
 ```
 
-### Запуск OpenOCD
-```
+### Start OpenOCD
+
+```bash
 openocd -f interface/stlink.cfg -f target/stm32f4x.cfg
 ```
 
-### Взнати розмір програми
-```
+### Check program size
+
+```bash
 cargo size --bin fan_controller --release -- -A
 ```
 
-### Пам'ять програми (початкова адреса: 0x8000000)
-- .vector_table: Таблиця векторів переривань, яка зазвичай розташована на початку пам'яті і містить адреси обробників переривань.
-- .text: Секція, що містить машинний код програми (інструкції).
-- .rodata: Секція для зберігання константних даних (тільки для читання).
+## Memory Layout
 
-### Оперативна пам'ять (початкова адреса: 0x20000000)
-- .data: Секція для глобальних і статичних змінних, які ініціалізовані до початкових значень.
-- .bss: Секція для глобальних і статичних змінних, які ініціалізовані нулями.
-- .uninit: Секція для змінних, які не ініціалізовані під час запуску програми.
+### Program memory (Flash, base address: `0x08000000`)
 
-### Це не важлива інформація, вона не попадаю в двійковий файл
-- .gnu.sgstubs: Секція, яка може містити спеціальні заглушки, специфічні для GNU.
-- .ARM.attributes: Секція, яка містить атрибути, специфічні для ARM архітектури.
-- .comment: Секція для зберігання коментарів або метаданих.
-- .defmt: Секція, яка може містити дані для форматування виводу (наприклад, для бібліотеки defmt).
+- `.vector_table` – interrupt vector table, usually at the beginning of memory, containing addresses of interrupt handlers
+- `.text` – section with program machine code (instructions)
+- `.rodata` – section for constant, read-only data
+
+### RAM (base address: `0x20000000`)
+
+- `.data` – global and static variables initialized to specific values
+- `.bss` – global and static variables initialized to zero
+- `.uninit` – variables that are not initialized at program start
+
+### Sections not included in the final binary / not critical for runtime
+
+- `.gnu.sgstubs` – may contain special GNU-specific stubs
+- `.ARM.attributes` – ARM-architecture-specific attributes
+- `.comment` – comments or metadata
+- `.defmt` – data for formatted output (e.g., for the `defmt` library)
